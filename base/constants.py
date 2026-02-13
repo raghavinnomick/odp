@@ -5,8 +5,8 @@ from decouple import config
 
 
 # App Constants
-APP_ENV                 =   config('APP_ENV')
-APP_SECRET_KEY          =   config('APP_SECRET_KEY')
+APP_ENV                         =   config('APP_ENV')
+APP_SECRET_KEY                  =   config('APP_SECRET_KEY')
 
 
 # Swagger Constants
@@ -20,25 +20,25 @@ SWAGGER_APP_PROPS       =   {
 
 
 # Database Constants
-DB_HOST                 =   config('DB_HOST')
-DB_PORT                 =   config('DB_PORT')
-DB_NAME                 =   config('DB_NAME')
-DB_USER                 =   config('DB_USER')
-DB_PASSWORD             =   config('DB_PASSWORD')
+DB_HOST                         =   config('DB_HOST')
+DB_PORT                         =   config('DB_PORT')
+DB_NAME                         =   config('DB_NAME')
+DB_USER                         =   config('DB_USER')
+DB_PASSWORD                     =   config('DB_PASSWORD')
 
 
 # AWS Constants
-AWS_ACCESS_KEY_ID		=	config('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY	=	config('AWS_SECRET_ACCESS_KEY')
-AWS_REGION				=	config('AWS_REGION')
-AWS_S3_BUCKET_NAME	    =	config('AWS_S3_BUCKET_NAME')
+AWS_ACCESS_KEY_ID		        =	config('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY	        =	config('AWS_SECRET_ACCESS_KEY')
+AWS_REGION				        =	config('AWS_REGION')
+AWS_S3_BUCKET_NAME	            =	config('AWS_S3_BUCKET_NAME')
 
 
 # OpenAI Constants
-OPENAI_API_KEY		    =	config('OPENAI_API_KEY')
-OPENAI_EMBEDDING_MODEL	=	config('OPENAI_EMBEDDING_MODEL')
-OPENAI_RAG_MODEL	    =	config('OPENAI_RAG_MODEL')
-OPENAI_LIGHT_MODEL	    =	config('OPENAI_LIGHT_MODEL')
+OPENAI_API_KEY		            =	config('OPENAI_API_KEY')
+OPENAI_EMBEDDING_MODEL	        =	config('OPENAI_EMBEDDING_MODEL')
+OPENAI_RAG_MODEL	            =	config('OPENAI_RAG_MODEL')
+OPENAI_LIGHT_MODEL	            =	config('OPENAI_LIGHT_MODEL')
 
 
 # Google Variables
