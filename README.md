@@ -20,7 +20,7 @@ and approved FAQs.
 
 ------------------------------------------------------------------------
 
-# 📂 Project Structure
+# 📂 Main Files Structure
 
     Source Code/
     │
@@ -29,6 +29,7 @@ and approved FAQs.
     ├── odp/
     │   ├── app.py                 # Application factory
     │   ├── __init__.py
+    │   ├── requirements.txt	
     │   │
     │   ├── base/
     │   │   └── constants.py
@@ -47,7 +48,14 @@ and approved FAQs.
     │   │   ├── odp_deal_dynamic_fact.py
     │   │   ├── odp_reply_log.py
     │   │   └── __init__.py
-    │
+	│   │
+    │   ├── vendors/
+    │   │   ├── aws > s3_uploader.py
+	│   │
+    │   ├── util/
+    │   │   ├── exceptions.py
+    │   │   ├── messages.py
+	│   │	
     └── .env
 
 ------------------------------------------------------------------------
