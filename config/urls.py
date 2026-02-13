@@ -4,7 +4,7 @@
 from ..config.swagger import api
 
 # All Namespaces...
-#from lkc.handler import lkc_namespace
+from ..deals.handler import deal_namespace
 
 
 # Adding the namespaces
@@ -14,4 +14,4 @@ class URLs:
     def add_namespaces():
         """ Function for adding namespaces... """
 
-        #api.add_namespace(lkc_namespace)
+        api.add_namespace(deal_namespace)
