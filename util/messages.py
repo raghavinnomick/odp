@@ -14,8 +14,19 @@ ERROR = {
     "ADD_DEAL_FILE_REQUIRED"    :   "File is required.",
     "ADD_DEAL_INVALID_FILE"     :   "Invalid file name.",
 
+    # Process Document Erros
+    "DOCUMENT_ID_REQUIRED"      :   "Document ID is required.",
+    "INVALID_DOCUMENT_ID"       :   "Invalid Document ID.",
+    "DOCUMENT_NOT_FOUND"        :   "Document not found.",
+    "DOCUMENT_STORAGE_MISSING"  :   "Storage path missing for document.",
+    "DOCUMENT_EXTRACTION_FAILED":   "Document extraction failed.",
+    "PDFPLUMBER_EXTRACTION_FAILED": "PDFPlumber extraction failed.",
+    "GOOGLE_DOC_AI_FAILED"      :   "Google Document AI extraction failed.",
+    "GOOGLE_INIT_FAILED"        :   "Failed to initialize Google Document AI client.",
+    "GOOGLE_EMPTY_RESPONSE"     :   "Google Document AI returned empty text.",
+
     # General Errors
-    "UNSUPPORTED_FILE_FORMAT": "Unsupported file format: {file_extension}. Supported formats: PDF",
+    "UNSUPPORTED_FILE_FORMAT"   :   "Unsupported file format: {file_extension}. Supported formats: PDF",
 }
 
 

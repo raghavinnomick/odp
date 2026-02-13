@@ -7,3 +7,6 @@ venv/
 
 # Ignore Environment files
 .env
+
+# Ignore files
+legal-doc-ai-ocr-ce3af3b01fdc.json

@@ -97,7 +97,7 @@ class AddDealService:
             raise ServiceException(
                 error_code = "DEAL_CREATE_FAILED",
                 message = "Unable to create deal. Please try again.",
-                details = str(e)  # optional (remove in production)
+                details = str(errors)  # optional (remove in production)
             )
 
 
