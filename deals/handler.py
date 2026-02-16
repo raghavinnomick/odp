@@ -8,7 +8,7 @@ Handles:
 """
 
 # Flask Packages
-from flask import abort
+from flask import abort, request
 from flask_restx import Namespace, Resource, fields
 
 # Request
@@ -55,6 +55,37 @@ class AddDeal(Resource):
                 "status": "success",
                 "data": result
             }, 201
+
+        except AppException as error:
+            return error.to_dict(), error.status_code
+
+        except Exception as error:
+            error = InternalServerException(details = str(error))
+            return error.to_dict(), error.status_code
+
+
+
+@deal_namespace.route('/list')
+class ListDeal(Resource):
+
+    def get(self):
+        """
+        List all deals
+        Optional Query Param:
+            ?search=DealName
+        """
+
+        try:
+            # Get search query param
+            search = request.args.get("search", type = str)
+
+            # Controller
+            result = DealController().list_deals(search)
+
+            return {
+                "status": "success",
+                "data": result
+            }, 200
 
         except AppException as error:
             return error.to_dict(), error.status_code

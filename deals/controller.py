@@ -7,6 +7,7 @@ Handles:
 
 # Services
 from .services.add_deal_service import AddDealService
+from .services.list_deal_service import ListDealService
 from .services.extraction_service import DealDocumentExtractionService
 from .services.document_process_service import DocumentProcessService
 
@@ -40,6 +41,21 @@ class DealController:
         # Call Service Layer
         result = AddDealService().create_deal(args)
         return result
+
+
+
+    def list_deals(self, search: str = None) -> dict:
+        """
+        List deals with optional search
+
+        Args:
+            search (str): Deal name search text
+
+        Returns:
+            dict
+        """
+
+        return ListDealService().list_deals(search)
 
 
 
