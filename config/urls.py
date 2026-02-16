@@ -5,6 +5,7 @@ from ..config.swagger import api
 
 # All Namespaces...
 from ..deals.handler import deal_namespace
+from ..bot.handler import bot_namespace
 
 
 # Adding the namespaces
@@ -15,3 +16,4 @@ class URLs:
         """ Function for adding namespaces... """
 
         api.add_namespace(deal_namespace)
+        api.add_namespace(bot_namespace)

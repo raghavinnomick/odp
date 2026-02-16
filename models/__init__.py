@@ -11,3 +11,5 @@ from .odp_deal_dynamic_fact import DealDynamicFact
 from .odp_reply_log import ReplyLog
 
 from .odp_deal_document_chunks import DealDocumentChunk
+from .odp_conversation import Conversation
+from .odp_conversation_message import ConversationMessage

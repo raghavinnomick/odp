@@ -24,6 +24,14 @@ ERROR = {
     "GOOGLE_DOC_AI_FAILED"      :   "Google Document AI extraction failed.",
     "GOOGLE_INIT_FAILED"        :   "Failed to initialize Google Document AI client.",
     "GOOGLE_EMPTY_RESPONSE"     :   "Google Document AI returned empty text.",
+    "DOCUMENT_PROCESSING_FAILED": "Failed to process document chunks and embeddings",
+
+    # Bot/Query Errors
+    "QUERY_FAILED": "Failed to process question",
+    "MISSING_QUESTION": "Question is required",
+    "INVALID_QUESTION": "Question must be a non-empty string",
+    "INVALID_TOP_K": "top_k must be an integer between 1 and 20",
+    "INVALID_REQUEST": "Request body is required",
 
     # General Errors
     "UNSUPPORTED_FILE_FORMAT"   :   "Unsupported file format: {file_extension}. Supported formats: PDF",
