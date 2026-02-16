@@ -1,7 +1,9 @@
-""" Add Deal Validation... """
+"""
+Add Deal Validation
+"""
 
-# App Constants
-from ...base import constants
+# Models
+from ...models.odp_deal import Deal
 
 # App Messages
 from ...util import messages
@@ -23,19 +25,36 @@ class AddDealValidation:
         deal_name = args.get('deal_name')
         file = args.get('file')
 
-        # Deal Name Validation
+        # -----------------------------------------
+        # 🔹 Deal Name Validation
+        # -----------------------------------------
+
         if not deal_name:
             raise ValidationException(
                 message = messages.ERROR['ADD_DEAL_NAME_REQUIRED']
             )
 
-        if len(deal_name.strip()) < 5:
+        deal_name = deal_name.strip()
+
+        if len(deal_name) < 5:
             raise ValidationException(
                 message = messages.ERROR.get("ADD_DEAL_NAME_MIN").format(5)
             )
 
+        # 🔥 NEW: Unique Deal Name Validation
+        existing = Deal.query.filter(
+            Deal.deal_name.ilike(deal_name)
+        ).first()
 
-        # File Validation
+        if existing:
+            raise ValidationException(
+                message = messages.ERROR['DEAL_NAME_ALREADY_EXISTS']
+            )
+
+        # -----------------------------------------
+        # 🔹 File Validation
+        # -----------------------------------------
+
         if not file:
             raise ValidationException(
                 message = messages.ERROR['ADD_DEAL_FILE_REQUIRED']

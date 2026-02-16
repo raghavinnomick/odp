@@ -3,8 +3,10 @@ Edit Deal Validation
 
 Checks:
     - deal_id is provided
+    - deal_id is integer
     - deal exists
     - deal_name is provided
+    - deal_name minimum length
     - deal_name is not already used by another deal
 """
 
@@ -28,27 +30,57 @@ class EditDealValidation:
         deal_id = args.get("deal_id")
         deal_name = args.get("deal_name")
 
-        # 🔹 Check deal_id
+        # -----------------------------------------
+        # 🔹 Deal ID Validation
+        # -----------------------------------------
+
         if not deal_id:
             raise ValidationException(
                 message = messages.ERROR['INVALID_DEAL_ID']
             )
 
-        # 🔹 Check deal_name
-        if not deal_name or not deal_name.strip():
+        if not isinstance(deal_id, int):
+            raise ValidationException(
+                message = messages.ERROR['INVALID_DEAL_ID']
+            )
+
+        # -----------------------------------------
+        # 🔹 Deal Name Validation
+        # -----------------------------------------
+
+        if not deal_name:
             raise ValidationException(
                 message = messages.ERROR['INVALID_DEAL_NAME']
             )
 
-        # 🔹 Check if Deal exists
-        deal = Deal.query.filter_by(deal_id = deal_id).first()
+        deal_name = deal_name.strip()
+
+        if len(deal_name) < 5:
+            raise ValidationException(
+                message = messages.ERROR.get("ADD_DEAL_NAME_MIN").format(5)
+            )
+
+        # Optional: prevent only spaces
+        if not deal_name:
+            raise ValidationException(
+                message = messages.ERROR['INVALID_DEAL_NAME']
+            )
+
+        # -----------------------------------------
+        # 🔹 Check if Deal Exists
+        # -----------------------------------------
+
+        deal = Deal.query.filter_by(deal_id=deal_id).first()
 
         if not deal:
             raise ValidationException(
                 message = messages.ERROR['DEAL_NOT_FOUND']
             )
 
-        # 🔹 Check duplicate name (excluding current deal)
+        # -----------------------------------------
+        # 🔹 Duplicate Name Check (Case-Insensitive)
+        # -----------------------------------------
+
         existing = Deal.query.filter(
             Deal.deal_name.ilike(deal_name),
             Deal.deal_id != deal_id
@@ -58,3 +90,5 @@ class EditDealValidation:
             raise ValidationException(
                 message = messages.ERROR['DEAL_NAME_ALREADY_EXISTS']
             )
+
+        return True
