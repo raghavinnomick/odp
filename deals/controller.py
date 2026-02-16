@@ -8,6 +8,8 @@ Handles:
 # Services
 from .services.add_deal_service import AddDealService
 from .services.list_deal_service import ListDealService
+from .services.edit_deal_service import EditDealService
+from .services.delete_deal_service import DeleteDealService
 from .services.extraction_service import DealDocumentExtractionService
 from .services.document_process_service import DocumentProcessService
 
@@ -56,6 +58,37 @@ class DealController:
         """
 
         return ListDealService().list_deals(search)
+
+
+
+    def edit_deal(self, args: dict) -> dict:
+        """
+        Edit deal name only
+
+        Args:
+            deal_id (int)
+            args (dict): {"deal_name": str}
+
+        Returns:
+            dict
+        """
+
+        return EditDealService().edit_deal(args)
+
+
+
+    def delete_deal(self, deal_id: int) -> dict:
+        """
+        Delete deal and related records
+
+        Args:
+            deal_id (int)
+
+        Returns:
+            dict
+        """
+
+        return DeleteDealService().delete_deal(deal_id)
 
 
 
