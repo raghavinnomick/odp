@@ -13,9 +13,11 @@ from flask_restx import Namespace, Resource, fields
 
 # Request
 from ..deals.requests.add_deal_request import AddDealRequest
+from ..deals.requests.edit_deal_request import EditDealRequest
 
 # Validations
 from ..deals.validations.add_deal_validation import AddDealValidation
+from ..deals.validations.edit_deal_validation import EditDealValidation
 from ..deals.validations.process_document_validation import ProcessDocumentValidation
 
 # Controller
@@ -68,11 +70,13 @@ class AddDeal(Resource):
 @deal_namespace.route('/list')
 class ListDeal(Resource):
 
+    @deal_namespace.doc(params = {
+        "search": "Search by Deal Name"
+    })
     def get(self):
         """
         List all deals
-        Optional Query Param:
-            ?search=DealName
+        Optional Query Param: ?search=Deal Name
         """
 
         try:
@@ -92,6 +96,65 @@ class ListDeal(Resource):
 
         except Exception as error:
             error = InternalServerException(details = str(error))
+            return error.to_dict(), error.status_code
+
+
+
+@deal_namespace.route('/edit')
+class EditDeal(Resource):
+
+    @EditDealRequest.apply(deal_namespace)
+    def put(self):
+        """
+        Update Deal Name Only
+        """
+
+        try:
+            # Extract request data
+            args = EditDealRequest.get_data()
+
+            # Validation
+            EditDealValidation().validate(args)
+
+            # Controller
+            result = DealController().edit_deal(args)
+
+            return {
+                "status": "success",
+                "data": result
+            }, 200
+
+        except AppException as error:
+            return error.to_dict(), error.status_code
+
+        except Exception as error:
+            error = InternalServerException(details = str(error))
+            return error.to_dict(), error.status_code
+
+
+
+@deal_namespace.route('/delete/<int:deal_id>')
+class DeleteDeal(Resource):
+
+    def delete(self, deal_id):
+        """
+        Delete Deal and related documents
+        """
+
+        try:
+            # Controller
+            result = DealController().delete_deal(deal_id)
+
+            return {
+                "status": "success",
+                "data": result
+            }, 200
+
+        except AppException as error:
+            return error.to_dict(), error.status_code
+
+        except Exception as error:
+            error = InternalServerException(details=str(error))
             return error.to_dict(), error.status_code
 
 

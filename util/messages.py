@@ -3,16 +3,28 @@
 
 # SUCCESS MESSAGES
 SUCCESS = {
+    "DEAL_UPDATE_SUCCESS"       :   "Deal updated successfully.",
+    "DEAL_DELETE_SUCCESS"       :   "Deal deleted successfully."
 }
 
 
 # ERROR MESSAGES
 ERROR = {
+    # Deal Errors
+    "INVALID_DEAL_ID"           :   "Deal ID is required.",
+    "INVALID_DEAL_NAME"         :   "Deal name is required.",
+    "DEAL_NOT_FOUND"            :   "Deal with given ID does not exist.",
+    "DEAL_NAME_ALREADY_EXISTS"  :   "Another deal already exists with this name.",
+
     # Add Deal Errors
     "ADD_DEAL_NAME_REQUIRED"    :   "Deal name is required.",
     "ADD_DEAL_NAME_MIN"         :   "Deal name must be at least {} characters.",
     "ADD_DEAL_FILE_REQUIRED"    :   "File is required.",
     "ADD_DEAL_INVALID_FILE"     :   "Invalid file name.",
+
+    # Edit/Delete Deal Errors
+    "DEAL_UPDATE_FAILED"        :   "Unable to update deal.",
+    "DEAL_DELETE_FAILED"        :   "Unable to delete deal.",
 
     # Process Document Erros
     "DOCUMENT_ID_REQUIRED"      :   "Document ID is required.",

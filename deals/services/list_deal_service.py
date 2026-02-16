@@ -50,8 +50,16 @@ class ListDealService:
                     "deal_id": deal.deal_id,
                     "deal_name": deal.deal_name,
                     "deal_code": deal.deal_code,
-                    "status": deal.status
+                    "status": deal.status,
+                    "created_at": self.format_datetime(deal.created_at),
+                    "updated_at": self.format_datetime(deal.updated_at)
                 }
                 for deal in deals
             ]
         }
+
+
+    def format_datetime(self, value):
+        """ Datetime Format... """
+
+        return value.strftime("%Y-%m-%d %H:%M:%S") if value else None
