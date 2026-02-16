@@ -8,12 +8,20 @@ Handles:
 # Services
 from .services.add_deal_service import AddDealService
 from .services.extraction_service import DealDocumentExtractionService
+from .services.document_process_service import DocumentProcessService
 
 
 
 
 
 class DealController:
+
+    def __init__(self):
+        """ Initialize controller with service instances... """
+
+        self.extraction_service = DealDocumentExtractionService()
+        self.process_service = DocumentProcessService()
+
 
     def create_deal(self, args: dict) -> dict:
         """
@@ -29,11 +37,8 @@ class DealController:
         Returns:
             dict: API response
         """
-
         # Call Service Layer
         result = AddDealService().create_deal(args)
-
-        # You can format response here if needed
         return result
 
 
@@ -41,20 +46,40 @@ class DealController:
     def process_deal_document(self, doc_id: int) -> dict:
         """
         Process uploaded deal document
-
-        Step-2 Part-1:
-            - Fetch document by doc_id
-            - Extract text from S3
-            - Return preview + metadata
-
+        Flow:
+            1. Extract text from document
+            2. Chunk text and generate embeddings
+            3. Store in database
+        
         Args:
             doc_id (int): Deal Document ID
-
+        
         Returns:
-            dict: Extraction result
+            dict: Complete processing result
         """
 
-        # Call Service Layer
-        result = DealDocumentExtractionService().extract_text_by_doc_id(doc_id)
+        # Step 1: Extract text
+        extraction_result = self.extraction_service.extract_text_by_doc_id(doc_id)
 
-        return result
+        # Step 2: Process chunks and embeddings
+        process_result = self.process_service.process_and_store(
+            deal_id = extraction_result["deal_id"],
+            doc_id = extraction_result["doc_id"],
+            extracted_text = extraction_result["extracted_text"],
+            doc_name = extraction_result["document_name"]
+        )
+
+        # Step 3: Combine results (remove full text from response)
+        return {
+            "doc_id": extraction_result["doc_id"],
+            "deal_id": extraction_result["deal_id"],
+            "document_name": extraction_result["document_name"],
+            "engine_used": extraction_result["engine_used"],
+            "text_length": extraction_result["text_length"],
+            "text_preview": extraction_result["text_preview"],
+
+            # Processing results
+            "chunks_created": process_result["chunks_created"],
+            "embeddings_generated": process_result["embeddings_generated"],
+            "processing_status": process_result["status"]
+        }

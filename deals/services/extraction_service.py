@@ -5,7 +5,7 @@ Flow:
     - Fetch document by doc_id
     - Get file from S3
     - Pass to DocumentExtractionOrchestrator
-    - Return preview + metadata
+    - Return preview + metadata + FULL TEXT
 """
 
 # Database
@@ -70,14 +70,15 @@ class DealDocumentExtractionService:
             extracted_text = extraction_result["text"]
             engine_used = extraction_result["engine_used"]
 
-            # 4️⃣ Return metadata + preview
+            # 4️⃣ Return metadata + preview + FULL TEXT (for controller)
             return {
                 "doc_id": doc_id,
                 "deal_id": document.deal_id,
                 "document_name": document.doc_name,
                 "engine_used": engine_used,
                 "text_length": len(extracted_text),
-                "text_preview": extracted_text[:self.PREVIEW_LENGTH]
+                "text_preview": extracted_text[:self.PREVIEW_LENGTH],
+                "extracted_text": extracted_text
             }
 
         except ServiceException:
