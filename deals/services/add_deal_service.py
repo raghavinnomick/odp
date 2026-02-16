@@ -5,6 +5,7 @@ Handles:
     - Create Deal
     - Upload Document to S3
     - Store Deal + Document metadata
+    - Trigger document processing
 """
 
 # Python Packages
@@ -21,8 +22,20 @@ from ...models.odp_deal_document import DealDocument
 # Vendors
 from ...vendors.aws.s3_uploader import S3Uploader
 
-# Expections
+# Exceptions
 from ...util.exceptions import ServiceException
+
+# Tasks (optional - only if Celery is configured)
+try:
+    from ..tasks.document_tasks import process_deal_document_task
+    CELERY_AVAILABLE = True
+
+except Exception:
+    CELERY_AVAILABLE = False
+
+# Services for sync processing
+from .extraction_service import DealDocumentExtractionService
+from .document_process_service import DocumentProcessService
 
 
 
@@ -38,7 +51,8 @@ class AddDealService:
             args (dict):
                 {
                     "deal_name": str,
-                    "file": FileStorage
+                    "file": FileStorage,
+                    "process_async": bool (optional, default False)
                 }
 
         Returns:
@@ -48,6 +62,7 @@ class AddDealService:
         deal_name = args.get("deal_name")
         deal_code = self._generate_deal_code(deal_name)
         file = args.get("file")
+        process_async = args.get("process_async", False)  # Default to sync
 
         # Start DB transaction
         try:
@@ -55,7 +70,7 @@ class AddDealService:
             deal = Deal(
                 deal_name = deal_name,
                 deal_code = deal_code,
-                status = False # Draft 
+                status = True 
             )
             db.session.add(deal)
             db.session.flush()  # Get deal_id before commit
@@ -80,14 +95,36 @@ class AddDealService:
             )
             db.session.add(document)
 
-
             # 4️⃣ Commit Transaction
             db.session.commit()
+
+            # 5️⃣ Process Document
+            processing_result = None
             
+            if process_async and CELERY_AVAILABLE:
+                # Async processing with Celery
+                print(f"📋 Queuing async processing for doc_id: {document.doc_id}")
+                task = process_deal_document_task.delay(document.doc_id)
+                processing_result = {
+                    "processing_mode": "async",
+                    "task_id": task.id,
+                    "message": "Document processing queued in background"
+                }
+            else:
+                # Synchronous processing (default)
+                print(f"⚡ Processing document synchronously: {document.doc_id}")
+                processing_result = self._process_document_sync(
+                    doc_id = document.doc_id,
+                    deal_id = deal.deal_id
+                )
+
             return {
                 "deal_id": deal.deal_id,
                 "deal_name": deal.deal_name,
-                "document_name": file.filename
+                "deal_code": deal.deal_code,
+                "doc_id": document.doc_id,
+                "document_name": file.filename,
+                "processing": processing_result
             }
 
         except Exception as errors:
@@ -97,9 +134,51 @@ class AddDealService:
             raise ServiceException(
                 error_code = "DEAL_CREATE_FAILED",
                 message = "Unable to create deal. Please try again.",
-                details = str(errors)  # optional (remove in production)
+                details = str(errors)
             )
 
+
+    def _process_document_sync(self, doc_id: int, deal_id: int) -> dict:
+        """
+        Process document synchronously (immediately)
+        
+        Args:
+            doc_id: Document ID
+            deal_id: Deal ID
+        
+        Returns:
+            dict: Processing result
+        """
+        
+        try:
+            # Step 1: Extract text
+            extraction_service = DealDocumentExtractionService()
+            extraction_result = extraction_service.extract_text_by_doc_id(doc_id)
+
+            # Step 2: Chunk + Embed
+            process_service = DocumentProcessService()
+            process_result = process_service.process_and_store(
+                deal_id = extraction_result["deal_id"],
+                doc_id = extraction_result["doc_id"],
+                extracted_text = extraction_result["extracted_text"],
+                doc_name = extraction_result["document_name"]
+            )
+
+            return {
+                "processing_mode": "sync",
+                "status": "completed",
+                "chunks_created": process_result["chunks_created"],
+                "embeddings_generated": process_result["embeddings_generated"],
+                "text_length": extraction_result["text_length"]
+            }
+
+        except Exception as e:
+            print(f"❌ Sync processing failed: {str(e)}")
+            return {
+                "processing_mode": "sync",
+                "status": "failed",
+                "error": str(e)
+            }
 
 
     def _generate_deal_code(self, deal_name: str) -> str:
