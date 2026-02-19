@@ -11,6 +11,7 @@ from .clarification_service import ClarificationService
 from .debug_service import DebugService
 from .conversation_service import ConversationService
 from .query_enhancement_service import QueryEnhancementService
+from .deal_context_service import DealContextService
 
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     'ClarificationService',
     'DebugService',
     'ConversationService',
-    'QueryEnhancementService'
+    'QueryEnhancementService',
+    'DealContextService'
 ]

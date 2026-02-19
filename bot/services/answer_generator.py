@@ -1,118 +1,193 @@
 """
 Answer Generator Service
-Generates answers using LLM with provided context
+Generates answers using LLM with context built dynamically from the database.
+
+Design principles:
+    - ZERO hardcoded deal names, facts, or numbers
+    - System prompt = ODP identity + tone rules from DB
+    - Deal facts = passed in from DB at query time (odp_deal_terms, dynamic_facts, faqs)
+    - Document context = RAG chunks from vector search
+    - Conversation history = real LLM message objects
+    - Hard no-hallucination rule: never invent numbers, dates, or terms
 """
 
 # Python Packages
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 # Vendors
 from ...vendors.openai import ChatService
 
 
-
-
-
 class AnswerGenerator:
     """
-    Service for generating answers using LLM
+    Service for generating answers using LLM.
+    Receives all context dynamically — nothing is hardcoded.
     """
-    
+
     def __init__(self):
         self.chat_service = ChatService()
-    
-    
-    def generate_answer(self, question: str, context: str, conversation_history: str = None) -> str:
+
+
+    def generate_answer(
+        self,
+        question: str,
+        context: str,
+        tone_rules: str = None,
+        deal_context: str = None,
+        history_messages: Optional[List[Dict]] = None,
+        conversation_history: str = None  # legacy param, not used
+    ) -> str:
         """
-        Generate answer using OpenAI chat completion
-        
+        Generate answer using OpenAI chat completion.
+
         Args:
-            question: User's question (may include conversation history)
-            context: Context built from relevant chunks
-            conversation_history: Optional conversation history string
-        
+            question: User's current question
+            context: RAG document chunks from vector search
+            tone_rules: Tone/compliance rules from odp_tone_rules table
+            deal_context: Structured deal facts from DB
+            history_messages: Prior conversation as real LLM turns [{role, content}, ...]
+            conversation_history: Legacy — ignored
+
         Returns:
-            Generated answer from LLM
+            Generated answer string
         """
-        
+
         print(f"🤖 Generating answer using LLM...")
-        
-        system_prompt = self._get_system_prompt()
-        user_prompt = self._format_user_prompt(question, context, conversation_history)
-        
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-        
+
+        system_prompt = self._get_system_prompt(tone_rules=tone_rules)
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Inject real conversation history as proper LLM turns
+        if history_messages:
+            for msg in history_messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+            print(f"   📜 Injected {len(history_messages)} history turns")
+
+        user_prompt = self._format_user_prompt(
+            question=question,
+            doc_context=context,
+            deal_context=deal_context
+        )
+        messages.append({"role": "user", "content": user_prompt})
+
         answer = self.chat_service.generate_response(
             messages=messages,
-            temperature=0.3,  # Lower temperature for factual answers
-            max_tokens=500
+            temperature=0.2,   # Lower = less creative = less hallucination
+            max_tokens=900
         )
-        
-        return answer
-    
-    
-    def _get_system_prompt(self) -> str:
-        """
-        Get the system prompt for the LLM
-        
-        Returns:
-            System prompt string
-        """
-        
-        return """You are a helpful assistant that answers questions about investment deals based on provided documents.
 
-IMPORTANT INSTRUCTIONS:
-- Use information from the provided context AND conversation history
-- If the current question refers to something mentioned earlier (like "it", "that company", "their revenue"), use the conversation history to understand what they're referring to
-- Only use information from the provided context
-- If the answer is not in the context, say "I don't have enough information in the documents to answer this question."
-- Be concise and specific
-- Cite sources when possible (e.g., "According to the investor deck...")
-- If there are numbers, dates, or specific terms, quote them exactly from the context
-- Do not make up information or use external knowledge
-- Format your answer in clear paragraphs"""
-    
-    
-    def _format_user_prompt(self, question: str, context: str, conversation_history: str = None) -> str:
+        return answer
+
+
+    def _get_system_prompt(self, tone_rules: str = None) -> str:
         """
-        Format the user prompt with question, context, and history
-        
+        Build the system prompt.
+        ODP identity + tone rules from DB.
+        No deal names, facts, or numbers — all deal data arrives via the user message.
+        """
+
+        if tone_rules and tone_rules.strip():
+            tone_section = tone_rules.strip()
+        else:
+            tone_section = (
+                "- Be direct, warm, and confident. Always say 'we' (the firm).\n"
+                "- Answer concisely. No corporate fluff or excessive disclaimers.\n"
+                "- For multi-part questions, answer each part clearly.\n"
+                "- When the user says 'it', 'them', 'that deal' — use conversation history to resolve."
+            )
+
+        return f"""You are an AI assistant for Open Doors Partners (ODP), a private investment firm.
+You answer investor questions about the firm's active investment deals.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TONE & COMPLIANCE RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{tone_section}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT NO-HALLUCINATION RULE — CRITICAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You will receive deal-specific context below (deal facts from DB and document passages).
+ONLY use the exact information in that context. Do NOT fill in gaps with general knowledge.
+
+NEVER invent:
+- Specific dollar amounts (minimums, valuations, fees, carry percentages)
+- Dates or timelines (payment dates, closing dates, IPO dates)
+- Terms or conditions (lock-up periods, distribution schedules, return projections)
+- Process steps (signing platforms, onboarding steps, document names)
+
+If specific information is NOT present in the context provided:
+→ Say: "I don't have that specific detail in our documents — let me flag it for our team."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOW TO USE THE CONTEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Each message contains up to two context sections:
+
+1. DEAL INFORMATION (from database): Structured facts — use exact figures as stated.
+2. DOCUMENT PASSAGES (from deal documents): Retrieved text — use for detailed answers.
+
+PRIORITY: Document passages > Deal information > Say "I don't have that detail."
+
+CONVERSATION HISTORY is injected as prior messages in this thread.
+Use it to understand what deal the user is referring to when they say "it",
+"that", "the structure", "the minimum" — without re-asking about context
+already established.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ESCALATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Say "Let me flag this for our team to follow up":
+- Fee negotiation
+- Commitments over $2M
+- Subscription or KYC document requests
+- Track record or legal verification"""
+
+
+    def _format_user_prompt(
+        self,
+        question: str,
+        doc_context: str,
+        deal_context: str = None
+    ) -> str:
+        """
+        Build the user-turn prompt.
+        History is injected as prior LLM turns — not here.
+
         Args:
-            question: User's question
-            context: Retrieved context
-            conversation_history: Optional conversation history
-        
+            question: User's current question
+            doc_context: RAG context from vector search
+            deal_context: Structured deal facts from DB
+
         Returns:
             Formatted prompt string
         """
-        
-        prompt_parts = []
-        
-        # Add conversation history if available
-        if conversation_history and conversation_history != question:
-            prompt_parts.append("Conversation History:")
-            prompt_parts.append(conversation_history)
-            prompt_parts.append("")
-        
-        # Add document context
-        prompt_parts.append("Context from documents:")
-        prompt_parts.append(context)
-        prompt_parts.append("")
-        prompt_parts.append("---")
-        prompt_parts.append("")
-        
-        # Add current question
-        if conversation_history and conversation_history != question:
-            # Extract just the current question from history
-            current_q = question.split("Current question:")[-1].strip() if "Current question:" in question else question
-            prompt_parts.append(f"Current Question: {current_q}")
-        else:
-            prompt_parts.append(f"Question: {question}")
-        
-        prompt_parts.append("")
-        prompt_parts.append("Answer:")
-        
-        return "\n".join(prompt_parts)
+
+        parts = []
+
+        if deal_context and deal_context.strip():
+            parts.append("── DEAL INFORMATION (from database) ──")
+            parts.append(deal_context.strip())
+            parts.append("")
+
+        if doc_context and doc_context.strip():
+            parts.append("── DOCUMENT PASSAGES (from deal documents) ──")
+            parts.append(doc_context.strip())
+            parts.append("")
+
+        if not (deal_context and deal_context.strip()) and not (doc_context and doc_context.strip()):
+            parts.append("── NOTE ──")
+            parts.append("No specific document context was retrieved for this question.")
+            parts.append("Only answer what you can confirm from the deal information above.")
+            parts.append("If you cannot confirm a specific fact, say so — do not guess.")
+            parts.append("")
+
+        parts.append("──────────────────────────────────────")
+        parts.append(f"Question: {question}")
+        parts.append("")
+        parts.append("Answer:")
+
+        return "\n".join(parts)

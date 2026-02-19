@@ -37,10 +37,10 @@ class AskQuestion(Resource):
     def post(self):
         """
         Answer a question about any deal
-        
+
         Request body:
         {
-            "question": "What is the valuation of SpaceX?",
+            "question": "What is the valuation of X?",
             "session_id": "optional-session-id",  // for conversation history
             "top_k": 5  // optional, default 5
         }
@@ -49,7 +49,7 @@ class AskQuestion(Resource):
         {
             "status": "success",
             "data": {
-                "answer": "The valuation of SpaceX is...",
+                "answer": "The valuation of X is...",
                 "sources": [...],
                 "session_id": "abc-123",  // use this for follow-up questions
                 "deals_referenced": [10, 11],
@@ -57,15 +57,15 @@ class AskQuestion(Resource):
             }
         }
         """
-        
+
         try:
             # Parse request
             data = request.get_json()
             
             if not data:
                 raise AppException(
-                    error_code="INVALID_REQUEST",
-                    message="Request body is required"
+                    error_code = "INVALID_REQUEST",
+                    message = "Request body is required"
                 )
             
             question = data.get('question')
@@ -75,42 +75,43 @@ class AskQuestion(Resource):
             # Validate question
             if not question:
                 raise AppException(
-                    error_code="MISSING_QUESTION",
-                    message="Question is required"
+                    error_code = "MISSING_QUESTION",
+                    message = "Question is required"
                 )
             
             if not isinstance(question, str) or len(question.strip()) == 0:
                 raise AppException(
-                    error_code="INVALID_QUESTION",
-                    message="Question must be a non-empty string"
+                    error_code = "INVALID_QUESTION",
+                    message = "Question must be a non-empty string"
                 )
             
             # Validate top_k
             if not isinstance(top_k, int) or top_k < 1 or top_k > 20:
                 raise AppException(
-                    error_code="INVALID_TOP_K",
-                    message="top_k must be an integer between 1 and 20"
+                    error_code = "INVALID_TOP_K",
+                    message = "top_k must be an integer between 1 and 20"
                 )
             
             # Call controller (no deal_id = search all deals)
             result = BotController().ask_question(
-                question=question.strip(),
-                deal_id=None,  # Search all deals
-                session_id=session_id,
-                top_k=top_k
+                question = question.strip(),
+                deal_id = None,  # Search all deals
+                session_id = session_id,
+                top_k = top_k
             )
-            
+
             return {
                 "status": "success",
                 "data": result
             }, 200
-            
+
         except AppException as error:
             return error.to_dict(), error.status_code
-            
+
         except Exception as error:
             error = InternalServerException(details=str(error))
             return error.to_dict(), error.status_code
+
 
 
 @bot_namespace.route('/ask/<int:deal_id>')
