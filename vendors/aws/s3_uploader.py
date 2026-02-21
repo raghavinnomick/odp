@@ -13,6 +13,8 @@ from ...base import constants
 class S3Uploader:
 
     def __init__(self):
+        """ Initialize S3 Uploader Service... """
+
         self.bucket_name = constants.AWS_S3_BUCKET_NAME
         self.client = boto3.client(
             's3',
@@ -20,6 +22,8 @@ class S3Uploader:
             aws_secret_access_key = constants.AWS_SECRET_ACCESS_KEY,
             region_name = constants.AWS_REGION
         )
+
+
 
     def upload_file(self, file_obj, s3_key):
         """

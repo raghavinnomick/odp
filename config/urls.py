@@ -8,6 +8,9 @@ from ..deals.handler import deal_namespace
 from ..bot.handler import bot_namespace
 
 
+
+
+
 # Adding the namespaces
 class URLs:
     """ All application namespaces will be declare here... """

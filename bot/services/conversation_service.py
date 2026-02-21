@@ -1,6 +1,18 @@
 """
-Conversation Service
-Manages conversation history and context
+Service: ConversationService
+
+Creates, reads, and manages conversation sessions and their messages.
+
+Data tables:
+  odp_conversations         → one row per session_id
+  odp_conversation_messages → one row per message turn
+
+Design:
+  - get_or_create_conversation() is idempotent: safe to call on every request.
+  - All DB writes include rollback on failure so a failed write never
+    poisons the SQLAlchemy session for the caller's subsequent queries.
+  - History is returned in chronological order (oldest first) so the LLM
+    receives context in the correct reading order.
 """
 
 # Python Packages
@@ -8,62 +20,61 @@ from typing import List, Dict, Optional
 import uuid
 
 # Database
-from odp.config.database import db
+from ...config.database import db
 
 # Models
 from ...models.odp_conversation import Conversation
 from ...models.odp_conversation_message import ConversationMessage
 
-
-
+# Constants
+from ...base import constants
 
 
 class ConversationService:
     """
-    Service for managing conversation sessions and history
+    Manages conversation sessions and message persistence.
+    All methods are transaction-safe (rollback on failure).
     """
+
+    # ── Session Management ─────────────────────────────────────────────────────
 
     def get_or_create_conversation(
         self,
         session_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: str = None
     ) -> Conversation:
         """
-        Get existing conversation or create new one
-        
+        Return an existing conversation or create a new one.
+
+        If *session_id* is provided and a matching conversation exists,
+        return it. Otherwise create a new session.
+
         Args:
-            session_id: Optional session ID (will generate if not provided)
-            user_id: Optional user ID
-        
+            session_id: Client-supplied UUID, or None to generate a new one.
+            user_id:    Team member identifier.
+
         Returns:
-            Conversation object
+            Conversation ORM object.
+
+        Raises:
+            Exception: Propagated if the DB commit fails (caller handles).
         """
-
         if session_id:
-            # Try to find existing conversation
-            conversation = Conversation.query.filter_by(
-                session_id = session_id
-            ).first()
-
+            conversation = Conversation.query.filter_by(session_id=session_id).first()
             if conversation:
                 return conversation
-        
-        # Create new conversation
+
         if not session_id:
             session_id = str(uuid.uuid4())
 
-        conversation = Conversation(
-            session_id = session_id,
-            user_id = user_id
-        )
-
+        conversation = Conversation(session_id=session_id, user_id=user_id)
         db.session.add(conversation)
         db.session.commit()
 
-        print(f"✅ Created new conversation: {session_id}")
+        print(f"✅ New conversation created: {session_id}")
         return conversation
 
-    
+    # ── Message Persistence ────────────────────────────────────────────────────
 
     def add_message(
         self,
@@ -72,146 +83,150 @@ class ConversationService:
         content: str,
         deal_id: Optional[int] = None,
         metadata: Optional[Dict] = None
-    ) -> ConversationMessage:
+    ) -> Optional[ConversationMessage]:
         """
-        Add a message to the conversation
-        
+        Append a message to a conversation.
+
         Args:
-            conversation_id: Conversation ID
-            role: 'user' or 'assistant'
-            content: Message content
-            deal_id: Optional deal ID
-            metadata: Optional metadata (sources, confidence, etc.)
-        
+            conversation_id: PK of the parent Conversation.
+            role:            "user" or "assistant".
+            content:         Message text.
+            deal_id:         Active deal at message time (optional).
+            metadata:        Response-type flags, sources, confidence, etc.
+
         Returns:
-            ConversationMessage object
+            Saved ConversationMessage, or None on DB error.
         """
-        
-        message = ConversationMessage(
-            conversation_id = conversation_id,
-            role = role,
-            content = content,
-            deal_id = deal_id,
-            message_metadata = metadata
-        )
+        try:
+            message = ConversationMessage(
+                conversation_id  = conversation_id,
+                role             = role,
+                content          = content,
+                deal_id          = deal_id,
+                message_metadata = metadata
+            )
+            db.session.add(message)
+            db.session.commit()
+            return message
 
-        db.session.add(message)
-        db.session.commit()
-        
-        return message
+        except Exception as exc:
+            db.session.rollback()
+            print(f"⚠️  add_message failed (conversation_id={conversation_id}): {exc}")
+            return None
 
-
+    # ── History Retrieval ──────────────────────────────────────────────────────
 
     def get_conversation_history(
         self,
         session_id: str,
-        limit: int = 10
+        limit: int = constants.BOT_LAST_CONVERSATION_MESSAGES_LIMIT
     ) -> List[Dict]:
         """
-        Get recent conversation history
-        
+        Return the *limit* most recent messages in chronological order.
+
         Args:
-            session_id: Session ID
-            limit: Number of recent messages to retrieve
-        
+            session_id: The session UUID.
+            limit:      Max messages to return (default from constants).
+
         Returns:
-            List of message dictionaries
+            List of message dicts, oldest first:
+            [{"role", "content", "deal_id", "metadata", "created_at"}, ...]
+            Empty list if the session does not exist or on DB error.
         """
-        
-        conversation = Conversation.query.filter_by(
-            session_id = session_id
-        ).first()
-        
-        if not conversation:
+        try:
+            conversation = Conversation.query.filter_by(session_id=session_id).first()
+            if not conversation:
+                return []
+
+            messages = (
+                ConversationMessage.query
+                .filter_by(conversation_id=conversation.conversation_id)
+                .order_by(ConversationMessage.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+
+            # Reverse so the LLM receives oldest → newest
+            return [
+                {
+                    "role":       msg.role,
+                    "content":    msg.content,
+                    "deal_id":    msg.deal_id,
+                    "metadata":   msg.message_metadata,
+                    "created_at": msg.created_at.isoformat()
+                }
+                for msg in reversed(messages)
+            ]
+
+        except Exception as exc:
+            db.session.rollback()
+            print(f"⚠️  get_conversation_history failed (session={session_id}): {exc}")
             return []
-        
-        messages = ConversationMessage.query.filter_by(
-            conversation_id = conversation.conversation_id
-        ).order_by(
-            ConversationMessage.created_at.desc()
-        ).limit(limit).all()
-        
-        # Reverse to get chronological order
-        messages = list(reversed(messages))
-        
-        return [
-            {
-                "role": msg.role,
-                "content": msg.content,
-                "deal_id": msg.deal_id,
-                "metadata": msg.message_metadata,
-                "created_at": msg.created_at.isoformat()
-            }
-            for msg in messages
-        ]
-    
 
-
-    def build_context_from_history(
-        self,
-        session_id: str,
-        current_question: str,
-        max_messages: int = 5
-    ) -> str:
+    def get_last_assistant_message(self, session_id: str) -> Optional[Dict]:
         """
-        Build context string from conversation history
-        
-        Args:
-            session_id: Session ID
-            current_question: Current question being asked
-            max_messages: Maximum number of previous messages to include
-        
+        Return the most recent assistant message for a session.
+
         Returns:
-            Context string for LLM
+            Message dict or None if no assistant messages exist.
         """
-        
-        history = self.get_conversation_history(
-            session_id = session_id,
-            limit = max_messages
-        )
-        
-        if not history:
-            return current_question
-        
-        # Build context
-        context_parts = ["Previous conversation:"]
-        
-        for msg in history:
-            role_label = "User" if msg["role"] == "user" else "Assistant"
-            context_parts.append(f"{role_label}: {msg['content']}")
-        
-        context_parts.append(f"\nCurrent question: {current_question}")
-        
-        return "\n".join(context_parts)
-    
+        try:
+            conversation = Conversation.query.filter_by(session_id=session_id).first()
+            if not conversation:
+                return None
 
+            msg = (
+                ConversationMessage.query
+                .filter_by(
+                    conversation_id=conversation.conversation_id,
+                    role="assistant"
+                )
+                .order_by(ConversationMessage.created_at.desc())
+                .first()
+            )
+
+            if not msg:
+                return None
+
+            return {
+                "role":     msg.role,
+                "content":  msg.content,
+                "deal_id":  msg.deal_id,
+                "metadata": msg.message_metadata
+            }
+
+        except Exception as exc:
+            db.session.rollback()
+            print(f"⚠️  get_last_assistant_message failed (session={session_id}): {exc}")
+            return None
+
+    # ── Conversation Lifecycle ─────────────────────────────────────────────────
 
     def clear_conversation(self, session_id: str) -> bool:
         """
-        Clear/delete a conversation
-        
+        Delete a conversation and all its messages.
+
         Args:
-            session_id: Session ID
-        
+            session_id: The session UUID to clear.
+
         Returns:
-            True if deleted, False if not found
+            True if deleted, False if not found or on error.
         """
-        
-        conversation = Conversation.query.filter_by(
-            session_id=session_id
-        ).first()
-        
-        if not conversation:
+        try:
+            conversation = Conversation.query.filter_by(session_id=session_id).first()
+            if not conversation:
+                return False
+
+            ConversationMessage.query.filter_by(
+                conversation_id=conversation.conversation_id
+            ).delete()
+            db.session.delete(conversation)
+            db.session.commit()
+
+            print(f"✅ Cleared conversation: {session_id}")
+            return True
+
+        except Exception as exc:
+            db.session.rollback()
+            print(f"⚠️  clear_conversation failed (session={session_id}): {exc}")
             return False
-        
-        # First delete all messages (due to foreign key constraint)
-        ConversationMessage.query.filter_by(
-            conversation_id=conversation.conversation_id
-        ).delete()
-        
-        # Then delete the conversation
-        db.session.delete(conversation)
-        db.session.commit()
-        
-        print(f"✅ Cleared conversation: {session_id}")
-        return True

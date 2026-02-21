@@ -1,0 +1,17 @@
+-- Step 1: Create a sequence for the id column
+CREATE SEQUENCE IF NOT EXISTS odp_deal_dynamic_facts_id_seq;
+
+-- Step 2: Attach it to the id column as the default
+ALTER TABLE odp_deal_dynamic_facts
+    ALTER COLUMN id SET DEFAULT nextval('odp_deal_dynamic_facts_id_seq');
+
+-- Step 3: Sync the sequence to the current max id (avoids conflicts if rows exist)
+SELECT setval(
+    'odp_deal_dynamic_facts_id_seq',
+    COALESCE((SELECT MAX(id) FROM odp_deal_dynamic_facts), 0) + 1,
+    false
+);
+
+-- Step 4: Make the sequence "owned by" the column so it drops together
+ALTER SEQUENCE odp_deal_dynamic_facts_id_seq
+    OWNED BY odp_deal_dynamic_facts.id;

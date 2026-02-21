@@ -1,117 +1,120 @@
 """
-Context Builder Service
-Builds formatted context from retrieved chunks for LLM
+Service: ContextBuilder
+
+Transforms raw RAG chunk tuples into formatted strings and metadata
+structures that are ready to inject into LLM prompts.
+
+Chunk tuple layout (7 values — matches SearchService output):
+    [0] chunk_text    str
+    [1] doc_name      str
+    [2] similarity    float   (cosine similarity 0–1)
+    [3] chunk_id      int
+    [4] chunk_index   int
+    [5] page_number   int | None
+    [6] deal_id       int
 """
 
 # Python Packages
 from typing import List, Tuple, Dict
 
 
-
-
-
 class ContextBuilder:
     """
-    Service for building context from document chunks
+    Formats chunk tuples for LLM consumption and confidence scoring.
+    Stateless — safe to reuse across requests.
     """
-    
+
     def build_context(self, chunks: List[Tuple]) -> str:
         """
-        Build formatted context string from retrieved chunks
-        
+        Build a formatted context string from retrieved chunks.
+
+        Each chunk is presented with its source document name, optional page
+        number, and relevance score so the LLM can cite sources accurately.
+
         Args:
-            chunks: List of tuples - can be 6 or 7 values:
-                   (chunk_text, doc_name, similarity, chunk_id, chunk_index, page_number)
-                   OR
-                   (chunk_text, doc_name, similarity, chunk_id, chunk_index, page_number, deal_id)
-        
+            chunks: List of 7-tuples from SearchService.search_similar_chunks().
+
         Returns:
-            Formatted context string ready for LLM
+            Multi-section string ready to paste into the LLM prompt,
+            or "" if *chunks* is empty.
         """
-        
         if not chunks:
             return ""
-        
-        context_parts = []
-        
+
+        parts = []
         for i, chunk in enumerate(chunks, 1):
-            # Handle both 6 and 7 value tuples
-            chunk_text = chunk[0]
-            doc_name = chunk[1]
-            similarity = chunk[2]
+            chunk_text  = chunk[0]
+            doc_name    = chunk[1]
+            similarity  = chunk[2]
             page_number = chunk[5] if len(chunk) > 5 else None
-            
-            # Format chunk with source information
+
             source_info = f"[Source: {doc_name}"
             if page_number:
                 source_info += f", Page {page_number}"
             source_info += f", Relevance: {similarity:.2%}]"
-            
-            context_parts.append(
-                f"Document {i}:\n{source_info}\n{chunk_text}\n"
-            )
-        
-        return "\n---\n".join(context_parts)
-    
-    
+
+            parts.append(f"Document {i}:\n{source_info}\n{chunk_text}\n")
+
+        return "\n---\n".join(parts)
+
     def extract_sources(self, chunks: List[Tuple]) -> List[Dict]:
         """
-        Extract source information from chunks for response
-        
+        Build a de-duplicated list of source references for the API response.
+
         Args:
-            chunks: List of chunks with metadata
-        
+            chunks: List of 7-tuples from SearchService.
+
         Returns:
-            List of source dictionaries with document info
+            List of source dicts:
+            {"document_name", "relevance", "preview", "page_number"? }
         """
-        
-        sources = []
+        sources   = []
         seen_docs = set()
-        
+
         for chunk in chunks:
-            chunk_text = chunk[0]
-            doc_name = chunk[1]
-            similarity = chunk[2]
+            doc_name    = chunk[1]
+            similarity  = chunk[2]
+            chunk_text  = chunk[0]
             page_number = chunk[5] if len(chunk) > 5 else None
-            
-            # Avoid duplicate documents in sources
-            if doc_name not in seen_docs:
-                source = {
-                    "document_name": doc_name,
-                    "relevance": f"{similarity:.2%}",
-                    "preview": chunk_text[:200] + "..." if len(chunk_text) > 200 else chunk_text
-                }
-                
-                if page_number:
-                    source["page_number"] = page_number
-                
-                sources.append(source)
-                seen_docs.add(doc_name)
-        
+
+            if doc_name in seen_docs:
+                continue
+
+            source = {
+                "document_name": doc_name,
+                "relevance":     f"{similarity:.2%}",
+                "preview":       chunk_text[:200] + "..." if len(chunk_text) > 200 else chunk_text
+            }
+            if page_number:
+                source["page_number"] = page_number
+
+            sources.append(source)
+            seen_docs.add(doc_name)
+
         return sources
-    
-    
+
     def calculate_confidence(self, chunks: List[Tuple]) -> str:
         """
-        Calculate confidence level based on similarity scores
-        
+        Derive a confidence tier from the average similarity of returned chunks.
+
+        Thresholds:
+          ≥ 0.85  → "high"
+          ≥ 0.70  → "medium"
+          < 0.70  → "low"
+
         Args:
-            chunks: List of chunks with similarity scores
-        
+            chunks: List of chunk tuples (similarity at index 2).
+
         Returns:
-            Confidence level: "high", "medium", or "low"
+            "high" | "medium" | "low"
         """
-        
         if not chunks:
             return "low"
-        
-        # Get average similarity of top chunks
-        # Similarity score is at index 2
-        avg_similarity = sum(chunk[2] for chunk in chunks) / len(chunks)
-        
+
+        avg_similarity = sum(c[2] for c in chunks) / len(chunks)
+
         if avg_similarity >= 0.85:
             return "high"
-        elif avg_similarity >= 0.70:
+        if avg_similarity >= 0.70:
             return "medium"
-        else:
-            return "low"
+        return "low"

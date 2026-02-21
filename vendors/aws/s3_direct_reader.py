@@ -22,6 +22,8 @@ class S3DirectReader:
     """
 
     def __init__(self):
+        """ Initialize S3 client with credentials and bucket name from constants."""
+
         self.bucket_name = constants.AWS_S3_BUCKET_NAME
 
         self.s3_client = boto3.client(

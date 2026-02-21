@@ -1,21 +1,35 @@
-"""OpenAI Chat/Completion Service"""
+""" OpenAI Chat/Completion Service... """
+
+# Python Packages
 from typing import List, Dict, Optional
+
+# Open Client
 from .openai_client import OpenAIClient
 
+# Constants
+from ...base import constants
+
+
+
+
+
 class ChatService:
-    """Service for chat completions using OpenAI"""
-    
+    """ Service for chat completions using OpenAI... """
+
     def __init__(self, api_key: str = None):
-        """Initialize chat service"""
+        """ Initialize chat service... """
+
         self.client = OpenAIClient(api_key).get_client()
-        self.default_model = "gpt-4o-mini"  # or "gpt-4o" for better quality
-    
+        self.default_model = constants.OPENAI_DEFAULT_MODEL # or "gpt-4o" for better quality
+
+
+
     def generate_response(
         self,
         messages: List[Dict[str, str]],
         model: str = None,
-        temperature: float = 0.7,
-        max_tokens: int = 1000
+        temperature: float = constants.OPENAI_ANSWER_TEMPERATURE,
+        max_tokens: int = constants.OPENAI_MAX_TOKENS
     ) -> str:
         """
         Generate a chat completion response
@@ -29,18 +43,23 @@ class ChatService:
         Returns:
             Generated response text
         """
+
         try:
             response = self.client.chat.completions.create(
-                model=model or self.default_model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
+                model = model or self.default_model,
+                messages = messages,
+                temperature = temperature,
+                max_tokens = max_tokens
             )
+
             return response.choices[0].message.content
+
         except Exception as e:
             print(f"❌ Error generating response: {e}")
             raise
-    
+
+
+
     def generate_answer_from_context(
         self,
         question: str,
@@ -58,6 +77,7 @@ class ChatService:
         Returns:
             Generated answer
         """
+
         messages = [
             {
                 "role": "system",
@@ -68,5 +88,5 @@ class ChatService:
                 "content": f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
             }
         ]
-        
-        return self.generate_response(messages, model=model)
+
+        return self.generate_response(messages, model = model)

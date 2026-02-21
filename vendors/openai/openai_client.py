@@ -39,6 +39,6 @@ class OpenAIClient:
 
 
     def get_client(self):
-        """Get the OpenAI client instance (alternative method)"""
+        """ Get the OpenAI client instance (alternative method) """
 
         return self.client

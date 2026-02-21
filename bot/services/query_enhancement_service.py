@@ -1,6 +1,20 @@
 """
-Query Enhancement Service
-Enhances user queries using conversation history
+Service: QueryEnhancementService
+
+Rewrites vague follow-up questions into self-contained, specific questions
+by leveraging conversation history.
+
+Examples:
+  History:  "What is the SpaceX valuation?"
+  Current:  "What about revenue?"
+  Enhanced: "What is the revenue of SpaceX?"
+
+  History:  "Tell me about Anthropic"
+  Current:  "What's their valuation?"
+  Enhanced: "What is the valuation of Anthropic?"
+
+The LLM is only called when the question contains vague indicators (pronouns,
+short metric-only queries). Clear questions pass through unchanged.
 """
 
 # Python Packages
@@ -9,180 +23,130 @@ from typing import Optional, List, Dict
 # Vendors
 from ...vendors.openai import ChatService
 
+# Configuration
+from ..config import query_config
+from ..config import deal_config
+from ..config import prompts
+
 
 class QueryEnhancementService:
     """
-    Service for enhancing queries with conversation context
+    Resolves anaphora and vague references in user questions using
+    recent conversation history.
     """
-    
+
     def __init__(self):
         self.chat_service = ChatService()
-    
-    
+
     def enhance_query(
         self,
         current_question: str,
         conversation_history: List[Dict]
     ) -> str:
         """
-        Enhance query using conversation history
-        
+        Rewrite *current_question* to be self-contained using history context.
+
         Args:
-            current_question: Current user question
-            conversation_history: List of previous messages
-        
+            current_question:    The raw question from the user.
+            conversation_history: Recent messages [{role, content}, ...].
+
         Returns:
-            Enhanced query string
+            Rewritten question string, or *current_question* unchanged if
+            no enhancement is needed or the LLM call fails.
         """
-        
-        # If no history, return as-is
+        # Skip enhancement when there is no useful history
         if not conversation_history or len(conversation_history) < 2:
             return current_question
-        
-        # Check if question seems to need context (has pronouns, incomplete, vague)
-        needs_enhancement = self._needs_enhancement(current_question)
-        
-        if not needs_enhancement:
+
+        if not self._needs_enhancement(current_question):
             return current_question
-        
-        # Build conversation context
+
         history_text = self._build_history_text(conversation_history)
-        
-        # Use LLM to expand the query
-        system_prompt = """You are a query rewriter that makes vague follow-up questions standalone and clear.
 
-RULES:
-1. If the question mentions "it", "that", "their", "the company", "this", or is incomplete → rewrite to include the specific entity from history
-2. If asking about metrics without naming the company (like "revenue?", "valuation?") → add the company name from context
-3. Keep the same intent and meaning
-4. Return ONLY the rewritten question, nothing else
-5. If question is already clear and complete, return it unchanged
-
-Examples:
-History: User asked "What is SpaceX valuation?" | Bot answered about SpaceX
-Current: "What about revenue?"
-Output: What is the revenue of SpaceX?
-
-History: User asked "Tell me about Anthropic" | Bot answered about Anthropic  
-Current: "What's their valuation?"
-Output: What is the valuation of Anthropic?
-
-History: User asked "SpaceX revenue?" | Bot answered about 2023 revenue
-Current: "What is total revenue over 2025?"
-Output: What is the total revenue of SpaceX over 2025?
-
-History: User asked "Compare deals" | Bot gave comparison
-Current: "Tell me more about the first one"
-Output: Tell me more about SpaceX
-
-IMPORTANT: Extract the company/entity being discussed from the MOST RECENT assistant message."""
-
-        user_prompt = f"""Conversation History:
-{history_text}
-
-Current Question: {current_question}
-
-Rewritten Question:"""
+        user_prompt = (
+            f"Conversation History:\n{history_text}\n\n"
+            f"Current Question: {current_question}\n\n"
+            f"Rewritten Question:"
+        )
 
         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "system", "content": prompts.QUERY_REWRITER_PROMPT},
+            {"role": "user",   "content": user_prompt}
         ]
-        
-        enhanced = self.chat_service.generate_response(
-            messages=messages,
-            temperature=0.1,  # Very low for consistent rewrites
-            max_tokens=100
-        )
-        
+
+        try:
+            enhanced = self.chat_service.generate_response(
+                messages    = messages,
+                temperature = query_config.QUERY_REWRITER_TEMPERATURE,
+                max_tokens  = query_config.QUERY_REWRITER_MAX_TOKENS
+            )
+        except Exception as exc:
+            print(f"⚠️  QueryEnhancement LLM call failed: {exc}")
+            return current_question
+
         enhanced_query = enhanced.strip().strip('"').strip("'")
-        
-        # Only use enhanced version if it's different and makes sense
-        if len(enhanced_query) > 0 and enhanced_query != current_question:
+
+        if enhanced_query and enhanced_query != current_question:
             print(f"🔄 Enhanced: '{current_question}' → '{enhanced_query}'")
             return enhanced_query
-        
+
         return current_question
-    
-    
+
+    # ── Private ────────────────────────────────────────────────────────────────
+
     def _needs_enhancement(self, question: str) -> bool:
         """
-        Check if question needs enhancement based on vagueness indicators
-        
-        Args:
-            question: User's question
-            
-        Returns:
-            True if needs enhancement
+        Return True if the question likely requires context to be understood.
+
+        Indicators:
+          - Contains vague pronouns / references (it, that, same, etc.)
+          - Very short (< 4 words) without a company name
+          - Metric-only phrasing (e.g. "revenue?") without a company name
         """
-        
         question_lower = question.lower()
-        
-        # Vagueness indicators
-        vague_words = [
-            'it', 'that', 'this', 'these', 'those',
-            'they', 'their', 'them',
-            'the company', 'the deal', 'the investment',
-            'same', 'also', 'too'
-        ]
-        
-        # Check for vague words
-        for word in vague_words:
+
+        # Vague pronoun / reference words
+        for word in query_config.VAGUE_WORDS:
             if word in question_lower:
                 return True
-        
-        # Check if question is very short (< 4 words) and doesn't mention a company
+
         words = question.split()
+
+        # Short question with no company name mentioned
         if len(words) < 4:
-            # Common company names to check
-            company_names = ['spacex', 'anthropic', 'tesla', 'openai', 'google', 'amazon']
-            has_company = any(company in question_lower for company in company_names)
-            if not has_company:
+            if not any(c in question_lower for c in deal_config.COMPANY_NAMES):
                 return True
-        
-        # Check if it's just a metric without context
-        metric_only_patterns = [
-            'revenue', 'valuation', 'profit', 'growth', 'ebitda',
-            'customers', 'users', 'employees'
-        ]
-        
-        # If question is ONLY a metric (like "revenue?" or "what's the valuation?")
+
+        # Metric-only question without a company name
         if len(words) <= 5:
-            for metric in metric_only_patterns:
+            for metric in query_config.METRIC_ONLY_PATTERNS:
                 if metric in question_lower:
-                    # Check if company name is mentioned
-                    company_names = ['spacex', 'anthropic', 'tesla', 'openai']
-                    has_company = any(company in question_lower for company in company_names)
-                    if not has_company:
+                    if not any(c in question_lower for c in deal_config.COMPANY_NAMES):
                         return True
-        
+
         return False
-    
-    
+
     def _build_history_text(self, history: List[Dict]) -> str:
         """
-        Build formatted history text focusing on recent context
-        
+        Format the last 6 messages as a readable history string.
+
+        Long assistant responses are truncated to 200 chars to keep the
+        rewriter prompt small and focused.
+
         Args:
-            history: Conversation history
-            
+            history: Conversation history, oldest first.
+
         Returns:
-            Formatted history string
+            Multi-line string "User: ...\nAssistant: ...\n..."
         """
-        
-        lines = []
-        
-        # Use last 6 messages (3 exchanges) for context
-        recent_history = history[-6:] if len(history) > 6 else history
-        
-        for msg in recent_history:
-            role = "User" if msg["role"] == "user" else "Assistant"
+        recent = history[-6:] if len(history) > 6 else history
+        lines  = []
+
+        for msg in recent:
+            role    = "User" if msg["role"] == "user" else "Assistant"
             content = msg["content"]
-            
-            # Truncate very long assistant responses
             if role == "Assistant" and len(content) > 200:
                 content = content[:200] + "..."
-            
             lines.append(f"{role}: {content}")
-        
+
         return "\n".join(lines)
