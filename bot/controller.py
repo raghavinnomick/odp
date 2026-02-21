@@ -1,6 +1,6 @@
 """
 Bot Controller
-Handles orchestration between handler and service layer for bot functionality
+Orchestrates between handler and service layer.
 """
 
 # Python Packages
@@ -10,84 +10,60 @@ from typing import Optional
 from .services.query_service import QueryService
 from .services.conversation_service import ConversationService
 
+# Constants
+from ..base import constants
+
+
+
+
 
 class BotController:
-    """
-    Controller for bot operations
-    """
-    
+
     def __init__(self):
-        self.query_service = QueryService()
+        """Initialize services."""
+
+        self.query_service        = QueryService()
         self.conversation_service = ConversationService()
-    
-    
+
+
+
     def ask_question(
         self,
         question: str,
+        user_id: str,
         deal_id: Optional[int] = None,
         session_id: Optional[str] = None,
-        top_k: int = 5
+        top_k: int = constants.BOT_DEFAULT_TOP_K
     ) -> dict:
-        """
-        Ask a question (with optional deal_id and session_id)
-        
-        Args:
-            question: User's question
-            deal_id: Optional deal ID (None = search all deals)
-            session_id: Optional session ID for conversation history
-            top_k: Number of relevant chunks to retrieve
-        
-        Returns:
-            dict: Answer with sources, session_id, and metadata
-        """
-        
-        result = self.query_service.answer_question(
-            question=question,
-            deal_id=deal_id,
-            session_id=session_id,
-            top_k=top_k
+
+        return self.query_service.answer_question(
+            question   = question,
+            user_id    = user_id,
+            deal_id    = deal_id,
+            session_id = session_id,
+            top_k      = top_k
         )
-        
-        return result
-    
-    
-    def get_conversation_history(
-        self,
-        session_id: str,
-        limit: int = 10
-    ) -> dict:
-        """
-        Get conversation history
-        
-        Args:
-            session_id: Session ID
-            limit: Number of messages
-        
-        Returns:
-            dict: Conversation history
-        """
-        
+
+
+
+    def generate_draft(self, session_id: str, user_id: str) -> dict:
+
+        return self.query_service.generate_draft_from_session(
+            session_id = session_id,
+            user_id    = user_id
+        )
+
+
+
+    def get_conversation_history(self, session_id: str, limit: int = 10) -> dict:
+
         history = self.conversation_service.get_conversation_history(
-            session_id=session_id,
-            limit=limit
+            session_id=session_id, limit=limit
         )
-        
-        return {
-            "session_id": session_id,
-            "messages": history,
-            "total": len(history)
-        }
-    
-    
+        return {"session_id": session_id, "messages": history, "total": len(history)}
+
+
+
     def clear_conversation(self, session_id: str) -> bool:
-        """
-        Clear a conversation
-        
-        Args:
-            session_id: Session ID
-        
-        Returns:
-            bool: True if cleared
-        """
-        
+
         return self.conversation_service.clear_conversation(session_id)

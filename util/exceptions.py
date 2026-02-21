@@ -37,6 +37,8 @@ class AppException(Exception):
 
         super().__init__(message)
 
+
+
     def to_dict(self) -> dict:
         """
         Convert exception to standardized API response format.
@@ -51,6 +53,7 @@ class AppException(Exception):
             response["details"] = self.details
 
         return response
+
 
 
 
@@ -73,6 +76,9 @@ class ValidationException(AppException):
         )
 
 
+
+
+
 class ServiceException(AppException):
     """
     Raised when business logic fails.
@@ -85,6 +91,9 @@ class ServiceException(AppException):
             status_code = 400,
             details = details
         )
+
+
+
 
 
 class NotFoundException(AppException):
@@ -100,6 +109,9 @@ class NotFoundException(AppException):
         )
 
 
+
+
+
 class UnauthorizedException(AppException):
     """
     Raised when authentication fails.
@@ -113,6 +125,9 @@ class UnauthorizedException(AppException):
         )
 
 
+
+
+
 class InternalServerException(AppException):
     """
     Raised for unexpected system errors.
@@ -123,5 +138,5 @@ class InternalServerException(AppException):
             error_code = "INTERNAL_SERVER_ERROR",
             message = "Something went wrong. Please try again later.",
             status_code = 500,
-            details  =details
+            details  = details
         )

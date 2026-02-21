@@ -4,18 +4,22 @@
 from typing import List
 from .openai_client import OpenAIClient
 
+# Constants
+from ...base  import constants
+
 
 
 
 
 class EmbeddingService:
     """ Service for generating embeddings using OpenAI... """
-    
+
     def __init__(self, api_key: str = None):
         """ Initialize embedding service... """
 
         self.client = OpenAIClient(api_key).get_client()
-        self.default_model = "text-embedding-3-small"
+        self.default_model = constants.OPENAI_EMBEDDING_MODEL
+
 
 
     def generate_embedding(self, text: str, model: str = None) -> List[float]:
@@ -24,7 +28,7 @@ class EmbeddingService:
         
         Args:
             text: Text to embed
-            model: OpenAI embedding model (default: text-embedding-3-small)
+            model: OpenAI embedding model (default: constants.OPENAI_EMBEDDING_MODEL)
             
         Returns:
             List of floats representing the embedding
@@ -54,7 +58,7 @@ class EmbeddingService:
         
         Args:
             texts: List of texts to embed
-            model: OpenAI embedding model (default: text-embedding-3-small)
+            model: OpenAI embedding model (default: constants.OPENAI_EMBEDDING_MODEL)
             batch_size: Number of texts to process at once (max 2048 for OpenAI)
             
         Returns:
