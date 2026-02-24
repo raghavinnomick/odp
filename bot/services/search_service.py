@@ -24,8 +24,8 @@ from ...config.database import db
 # Vendors
 from ...vendors.openai import EmbeddingService
 
-# Constants
-from ...base import constants
+# Config
+from ..config import bot_config
 
 
 class SearchService:
@@ -55,8 +55,8 @@ class SearchService:
         self,
         question: str,
         deal_id: Optional[int] = None,
-        top_k: int = constants.BOT_DEFAULT_TOP_K,
-        similarity_threshold: float = constants.BOT_SIMILARITY_THRESHOLD
+        top_k: int = bot_config.BOT_DEFAULT_TOP_K,
+        similarity_threshold: float = bot_config.BOT_SIMILARITY_THRESHOLD
     ) -> List[Tuple]:
         """
         Find document chunks semantically similar to *question*.

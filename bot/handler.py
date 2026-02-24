@@ -13,20 +13,24 @@ from .validations import BotValidation
 # Controller
 from .controller import BotController
 
-# Exceptions
+# Exceptions & messages
 from ..util.exceptions import AppException, InternalServerException
+from ..util import messages
 
-# Constants
-from ..base import constants
+# Config
+from .config import bot_config
 
+# Namespace
 bot_namespace = Namespace("bot", description="Chatbot and Q&A operations")
 
 
-# ── POST /bot/ask ─────────────────────────────────────────────────────────────
 
+
+
+# ── POST /bot/ask ─────────────────────────────────────────────────────────────
 @bot_namespace.route("/ask")
 class AskQuestion(Resource):
-    """Ask a question — searches across ALL deals."""
+    """ Ask a question — searches across ALL deals... """
 
     def post(self):
         """
@@ -48,36 +52,41 @@ class AskQuestion(Resource):
 
         try:
             data = request.get_json()
+
+            # Request Data
+            print(f"Request Data: {data}")
+
             BotValidation.validate_body(data)
 
             question   = data.get("question")
             user_id    = data.get("user_id")
             session_id = data.get("session_id")
-            top_k      = constants.BOT_DEFAULT_TOP_K
+            top_k      = bot_config.BOT_DEFAULT_TOP_K
 
             BotValidation.validate_question(question)
             BotValidation.validate_user_id(user_id)
             BotValidation.validate_top_k(top_k)
 
             result = BotController().ask_question(
-                question=question.strip(),
-                user_id=user_id,
-                deal_id=None,
-                session_id=session_id,
-                top_k=top_k
+                question = question.strip(),
+                user_id = user_id,
+                deal_id = None,
+                session_id = session_id,
+                top_k = top_k
             )
 
             return {"status": "success", "data": result}, 200
 
         except AppException as error:
             return error.to_dict(), error.status_code
+
         except Exception as error:
-            error = InternalServerException(details=str(error))
+            error = InternalServerException(details = str(error))
             return error.to_dict(), error.status_code
 
 
-# ── POST /bot/ask/<deal_id> ───────────────────────────────────────────────────
 
+# ── POST /bot/ask/<deal_id> ───────────────────────────────────────────────────
 @bot_namespace.route("/ask/<int:deal_id>")
 class AskQuestionDeal(Resource):
     """Ask a question scoped to a specific deal."""
@@ -101,31 +110,32 @@ class AskQuestionDeal(Resource):
             question   = data.get("question")
             user_id    = data.get("user_id")
             session_id = data.get("session_id")
-            top_k      = constants.BOT_DEFAULT_TOP_K
+            top_k      = bot_config.BOT_DEFAULT_TOP_K
 
             BotValidation.validate_question(question)
             BotValidation.validate_user_id(user_id)
             BotValidation.validate_top_k(top_k)
 
             result = BotController().ask_question(
-                question=question.strip(),
-                user_id=user_id,
-                deal_id=deal_id,
-                session_id=session_id,
-                top_k=top_k
+                question = question.strip(),
+                user_id = user_id,
+                deal_id = deal_id,
+                session_id = session_id,
+                top_k = top_k
             )
 
             return {"status": "success", "data": result}, 200
 
         except AppException as error:
             return error.to_dict(), error.status_code
+
         except Exception as error:
-            error = InternalServerException(details=str(error))
+            error = InternalServerException(details = str(error))
             return error.to_dict(), error.status_code
 
 
-# ── POST /bot/generate-draft ──────────────────────────────────────────────────
 
+# ── POST /bot/generate-draft ──────────────────────────────────────────────────
 @bot_namespace.route("/generate-draft")
 class GenerateDraft(Resource):
     """
@@ -170,53 +180,59 @@ class GenerateDraft(Resource):
 
             if not session_id:
                 raise AppException(
-                    error_code="MISSING_SESSION_ID",
-                    message="session_id is required to generate a draft.",
-                    status_code=400
+                    error_code = "MISSING_SESSION_ID",
+                    message = messages.ERROR["MISSING_SESSION_ID"],
+                    status_code = 400
                 )
 
             result = BotController().generate_draft(
-                session_id=session_id,
-                user_id=user_id
+                session_id = session_id,
+                user_id = user_id
             )
 
             return {"status": "success", "data": result}, 200
 
         except AppException as error:
             return error.to_dict(), error.status_code
+
         except Exception as error:
-            error = InternalServerException(details=str(error))
+            error = InternalServerException(details = str(error))
             return error.to_dict(), error.status_code
 
 
-# ── GET /bot/conversation/<session_id> ────────────────────────────────────────
 
+# ── GET /bot/conversation/<session_id> ────────────────────────────────────────
 @bot_namespace.route("/conversation/<session_id>")
 class ConversationHistory(Resource):
     """Get or delete a conversation."""
 
     def get(self, session_id):
-        """Get conversation history for a session."""
+        """ Get conversation history for a session... """
+ 
         try:
-            limit  = request.args.get("limit", 10, type=int)
+            limit  = request.args.get("limit", bot_config.BOT_LAST_CONVERSATION_MESSAGES_LIMIT, type = int)
             result = BotController().get_conversation_history(
-                session_id=session_id, limit=limit
+                session_id = session_id, limit = limit
             )
             return {"status": "success", "data": result}, 200
+
         except Exception as error:
             return {"status": "error", "message": str(error)}, 500
 
+
     def delete(self, session_id):
-        """Clear a conversation."""
+        """ Clear a conversation... """
+
         try:
             result = BotController().clear_conversation(session_id)
             return {"status": "success", "data": {"session_id": session_id, "cleared": result}}, 200
+
         except Exception as error:
             return {"status": "error", "message": str(error)}, 500
 
 
-# ── GET /bot/debug/<deal_id> ──────────────────────────────────────────────────
 
+# ── GET /bot/debug/<deal_id> ──────────────────────────────────────────────────
 @bot_namespace.route("/debug/<int:deal_id>")
 class DebugDeal(Resource):
     """Debug endpoint — inspect deal data. Not for production."""
@@ -237,3 +253,60 @@ class DebugDeal(Resource):
             }, 200
         except Exception as error:
             return {"status": "error", "message": str(error)}, 500
+
+
+
+# ── GET /bot/sessions/<user_id> ───────────────────────────────────────────────
+@bot_namespace.route("/sessions/<user_id>")
+class GetUserSessions(Resource):
+    """Get all sessions for a specific user."""
+
+    def get(self, user_id):
+        """
+        Retrieve all conversations (sessions) for a given user_id.
+        Returns session_id and other session details from odp_conversations table.
+
+        Request:
+        GET /bot/sessions/<user_id>
+
+        Response:
+        {
+            "status": "success",
+            "data": {
+                "user_id": "user-123",
+                "total": 2,
+                "sessions": [
+                    {
+                        "conversation_id": 1,
+                        "session_id": "abc-xyz-123",
+                        "user_id": "user-123",
+                        "created_at": "2024-01-15T10:30:00",
+                        "updated_at": "2024-01-15T11:45:00",
+                        "context_data": null
+                    },
+                    {
+                        "conversation_id": 2,
+                        "session_id": "def-uvw-456",
+                        "user_id": "user-123",
+                        "created_at": "2024-01-14T09:20:00",
+                        "updated_at": "2024-01-14T10:15:00",
+                        "context_data": null
+                    }
+                ]
+            }
+        }
+        """
+
+        try:
+            BotValidation.validate_user_id(user_id)
+
+            result = BotController().get_user_sessions(user_id)
+
+            return {"status": "success", "data": result}, 200
+
+        except AppException as error:
+            return error.to_dict(), error.status_code
+
+        except Exception as error:
+            error = InternalServerException(details = str(error))
+            return error.to_dict(), error.status_code
