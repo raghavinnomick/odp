@@ -30,6 +30,7 @@ class AppException(Exception):
             status_code (int): HTTP status code (default: 400)
             details (str): Optional internal/debug details
         """
+
         self.error_code = error_code
         self.message = message
         self.status_code = status_code
@@ -43,6 +44,7 @@ class AppException(Exception):
         """
         Convert exception to standardized API response format.
         """
+
         response = {
             "status": "error",
             "error_code": self.error_code,

@@ -1,8 +1,8 @@
 """
 Service: ContextBuilder
-
+========================
 Transforms raw RAG chunk tuples into formatted strings and metadata
-structures that are ready to inject into LLM prompts.
+structures ready to inject into LLM prompts.
 
 Chunk tuple layout (7 values — matches SearchService output):
     [0] chunk_text    str
@@ -18,7 +18,7 @@ Chunk tuple layout (7 values — matches SearchService output):
 from typing import List, Tuple, Dict
 
 # Config
-from ..config import service_constants
+from ..config import thresholds
 
 
 class ContextBuilder:
@@ -30,16 +30,7 @@ class ContextBuilder:
     def build_context(self, chunks: List[Tuple]) -> str:
         """
         Build a formatted context string from retrieved chunks.
-
-        Each chunk is presented with its source document name, optional page
-        number, and relevance score so the LLM can cite sources accurately.
-
-        Args:
-            chunks: List of 7-tuples from SearchService.search_similar_chunks().
-
-        Returns:
-            Multi-section string ready to paste into the LLM prompt,
-            or "" if *chunks* is empty.
+        Returns "" if chunks is empty.
         """
         if not chunks:
             return ""
@@ -60,16 +51,13 @@ class ContextBuilder:
 
         return "\n---\n".join(parts)
 
+
     def extract_sources(self, chunks: List[Tuple]) -> List[Dict]:
         """
         Build a de-duplicated list of source references for the API response.
 
-        Args:
-            chunks: List of 7-tuples from SearchService.
-
         Returns:
-            List of source dicts:
-            {"document_name", "relevance", "preview", "page_number"? }
+            List of {"document_name", "relevance", "preview", "page_number"?}
         """
         sources   = []
         seen_docs = set()
@@ -83,10 +71,11 @@ class ContextBuilder:
             if doc_name in seen_docs:
                 continue
 
+            preview_len = thresholds.SOURCE_PREVIEW_MAX_LENGTH
             source = {
                 "document_name": doc_name,
                 "relevance":     f"{similarity:.2%}",
-                "preview":       chunk_text[:service_constants.SOURCE_PREVIEW_MAX_LENGTH] + "..." if len(chunk_text) > service_constants.SOURCE_PREVIEW_MAX_LENGTH else chunk_text
+                "preview":       chunk_text[:preview_len] + "..." if len(chunk_text) > preview_len else chunk_text
             }
             if page_number:
                 source["page_number"] = page_number
@@ -96,28 +85,23 @@ class ContextBuilder:
 
         return sources
 
+
     def calculate_confidence(self, chunks: List[Tuple]) -> str:
         """
         Derive a confidence tier from the average similarity of returned chunks.
 
-        Thresholds (from service_constants):
-          ≥ HIGH_THRESHOLD  → "high"
-          ≥ MEDIUM_THRESHOLD → "medium"
-          < MEDIUM_THRESHOLD → "low"
-
-        Args:
-            chunks: List of chunk tuples (similarity at index 2).
-
-        Returns:
-            "high" | "medium" | "low"
+        Thresholds (from thresholds.py):
+          >= CONFIDENCE_HIGH_THRESHOLD   → "high"
+          >= CONFIDENCE_MEDIUM_THRESHOLD → "medium"
+          <  CONFIDENCE_MEDIUM_THRESHOLD → "low"
         """
         if not chunks:
             return "low"
 
         avg_similarity = sum(c[2] for c in chunks) / len(chunks)
 
-        if avg_similarity >= service_constants.CONFIDENCE_HIGH_THRESHOLD:
+        if avg_similarity >= thresholds.CONFIDENCE_HIGH_THRESHOLD:
             return "high"
-        if avg_similarity >= service_constants.CONFIDENCE_MEDIUM_THRESHOLD:
+        if avg_similarity >= thresholds.CONFIDENCE_MEDIUM_THRESHOLD:
             return "medium"
         return "low"
