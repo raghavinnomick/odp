@@ -31,6 +31,12 @@ from typing import List, Dict, Optional
 # Vendors
 from ...vendors.openai import ChatService
 
+# Config
+from ..config import prompts, service_constants
+
+
+
+
 
 class AnswerGenerator:
     """
@@ -39,10 +45,12 @@ class AnswerGenerator:
     """
 
     def __init__(self):
+        """ Initialize ChatService client. No state or config here."""
         self.chat_service = ChatService()
 
-    # ── Greeting Reply ─────────────────────────────────────────────────────────
 
+
+    # ── Greeting Reply ─────────────────────────────────────────────────────────
     def generate_greeting_reply(
         self,
         question: str,
@@ -56,16 +64,7 @@ class AnswerGenerator:
 
         tone_section = self._resolve_tone(tone_rules)
 
-        system_prompt = f"""You are a helpful assistant for Open Doors Partners (ODP), a private investment firm.
-You assist the ODP team in answering investor questions.
-
-TONE RULES (from database):
-{tone_section}
-
-TASK: The user sent a greeting or social message.
-Reply in a warm, brief, natural way — 1 to 2 sentences maximum.
-Do NOT mention deals or investments unless the user brings it up.
-Just greet them and let them know you are ready to help."""
+        system_prompt = prompts.GREETING_SYSTEM_TEMPLATE.format(tone_section = tone_section)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -73,13 +72,14 @@ Just greet them and let them know you are ready to help."""
         ]
 
         return self.chat_service.generate_response(
-            messages=messages,
-            temperature=0.5,
-            max_tokens=80
+            messages = messages,
+            temperature = service_constants.LLM_GREETING_TEMPERATURE,
+            max_tokens = service_constants.LLM_GREETING_MAX_TOKENS
         ).strip()
 
-    # ── Standard Answer ────────────────────────────────────────────────────────
 
+
+    # ── Standard Answer ────────────────────────────────────────────────────────
     def generate_answer(
         self,
         question: str,
@@ -106,9 +106,10 @@ Just greet them and let them know you are ready to help."""
         Returns:
             Answer string.
         """
+
         print("🤖 Generating answer...")
 
-        system_prompt = self._build_system_prompt(tone_rules=tone_rules, mode="answer")
+        system_prompt = self._build_system_prompt(tone_rules = tone_rules, mode = "answer")
         messages = [{"role": "system", "content": system_prompt}]
 
         if history_messages:
@@ -120,20 +121,21 @@ Just greet them and let them know you are ready to help."""
             print(f"   📜 Injected {len(history_messages)} history turns")
 
         user_prompt = self._format_answer_prompt(
-            question=question,
-            doc_context=context,
-            deal_context=deal_context
+            question = question,
+            doc_context = context,
+            deal_context = deal_context
         )
         messages.append({"role": "user", "content": user_prompt})
 
         return self.chat_service.generate_response(
-            messages=messages,
-            temperature=0.2,
-            max_tokens=900
+            messages = messages,
+            temperature = service_constants.LLM_ANSWER_TEMPERATURE,
+            max_tokens = service_constants.LLM_ANSWER_MAX_TOKENS
         )
 
-    # ── Info Request (ask for gaps only) ──────────────────────────────────────
 
+
+    # ── Info Request (ask for gaps only) ──────────────────────────────────────
     def generate_info_request(
         self,
         original_question: str,
@@ -191,8 +193,8 @@ End with: "Once you share these, I will draft the reply right away." """
 
         return self.chat_service.generate_response(
             messages=messages,
-            temperature=0.2,
-            max_tokens=400
+            temperature=service_constants.LLM_INFO_REQUEST_TEMPERATURE,
+            max_tokens=service_constants.LLM_INFO_REQUEST_MAX_TOKENS
         )
 
     # ── Draft Email ────────────────────────────────────────────────────────────
@@ -237,106 +239,37 @@ End with: "Once you share these, I will draft the reply right away." """
 
         return self.chat_service.generate_response(
             messages=messages,
-            temperature=0.3,
-            max_tokens=1200
+            temperature=service_constants.LLM_DRAFT_TEMPERATURE,
+            max_tokens=service_constants.LLM_DRAFT_MAX_TOKENS
         )
 
     # ── Private: System Prompts ────────────────────────────────────────────────
-
     def _resolve_tone(self, tone_rules: str = None) -> str:
-        """Return tone section — from DB if available, minimal fallback otherwise."""
+        """ Return tone section — from DB if available, minimal fallback otherwise... """
+
         if tone_rules and tone_rules.strip():
             return tone_rules.strip()
+
         print("⚠️  No tone rules in DB — using minimal fallback.")
-        return (
-            "- Speak as 'we' (the firm). Be direct, warm, and confident.\n"
-            "- Answer concisely. No corporate fluff.\n"
-            "- Use exact numbers from context only. Never invent figures."
-        )
+        return service_constants.FALLBACK_TONE_RULES
+
+
 
     def _build_system_prompt(self, tone_rules: str = None, mode: str = "answer") -> str:
         """Assemble system prompt for the given mode. Tone always from DB."""
         tone_section = self._resolve_tone(tone_rules)
 
         if mode == "ask":
-            mode_instructions = """
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-YOUR TASK: REQUEST MISSING INFO (GAPS ONLY)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-You already gave a partial answer. Now ask ONLY for what you could NOT confirm.
-- Read the partial answer carefully first.
-- Ask ONLY about items where the answer said "we don't have",
-  "not in knowledge base", "could you provide", or similar.
-- Do NOT re-ask about anything that was already answered.
-- Number each missing item.
-- Be specific: "What are the payment dates?" not "Do you have more details?"
-- Keep it short: one intro sentence + numbered list.
-- End with: "Once you share these, I will draft the reply right away."
-"""
+            mode_instructions = prompts.ASK_MODE_INSTRUCTIONS
         elif mode == "draft":
-            mode_instructions = """
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-YOUR TASK: DRAFT EMAIL REPLY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Draft a professional email reply to the investor question provided.
-Use team-supplied information, deal context, and document passages.
-
-FORMAT:
-- Start directly with the reply body (no subject line)
-- Use tone rules faithfully
-- Answer each part of the investor's question in order
-- If numbered sub-questions, answer each one numbered
-- End with "Best,"
-- Do NOT add a name — the user will add that
-
-ACCURACY:
-- Only use facts from: team-supplied info, deal context, document passages
-- If any part still cannot be confirmed, insert:
-  "[Note: please confirm — {what is missing}]"
-- NEVER invent any number, date, or term not present in the sources
-"""
+            mode_instructions = prompts.DRAFT_MODE_INSTRUCTIONS
         else:  # answer mode
-            mode_instructions = """
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CONTEXT PRIORITY — READ CAREFULLY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-The context below is ordered from HIGHEST to LOWEST priority:
+            mode_instructions = prompts.ANSWER_MODE_INSTRUCTIONS
 
-  1. TEAM-SUPPLIED FACTS  — at the top, labelled "TEAM-SUPPLIED FACTS"
-     These are corrections and answers provided by the ODP team.
-     They are ALWAYS correct and OVERRIDE any conflicting document values.
-     Example: if team says minimum ticket is $25k, use $25k even if a
-     document says $50k.
-
-  2. DOCUMENT PASSAGES  — below, labelled "Document N:"
-     These are from deal PDFs. Use them for any fact not covered above.
-     If a fact appears in BOTH team facts AND documents, the team fact wins.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STRICT NO-HALLUCINATION RULE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NEVER invent:
-- Dollar amounts (minimums, valuations, fees)
-- Dates or timelines (payment dates, closing dates)
-- Terms (lock-up periods, distribution schedules)
-
-WHEN INFORMATION IS MISSING from ALL context above:
-1. Answer only what you CAN confirm.
-2. For missing items say: "We don't have [specific detail] in our knowledge base."
-3. NEVER guess or use typical industry figures.
-
-ESCALATION — say "Let me flag this for our team to follow up":
-- Fee negotiation, commitments over $2M, KYC/subscription document requests
-"""
-
-        return f"""You are an AI assistant for Open Doors Partners (ODP), a private investment firm.
-You help the ODP team respond accurately and professionally to investor questions.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TONE & COMPLIANCE RULES (from database)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{tone_section}
-{mode_instructions}"""
+        return prompts.SYSTEM_PROMPT_TEMPLATE.format(
+            tone_section=tone_section,
+            mode_instructions=mode_instructions
+        )
 
     # ── Private: Prompt Formatters ─────────────────────────────────────────────
 
@@ -360,26 +293,20 @@ TONE & COMPLIANCE RULES (from database)
         parts = []
 
         if deal_context and deal_context.strip():
-            parts.append("── DEAL INFORMATION ──")
+            parts.append(prompts.ANSWER_PROMPT_DEAL_SECTION)
             parts.append(deal_context.strip())
             parts.append("")
 
         if doc_context and doc_context.strip():
-            parts.append("── KNOWLEDGE BASE (team facts first, then documents) ──")
+            parts.append(prompts.ANSWER_PROMPT_KB_SECTION)
             parts.append(doc_context.strip())
             parts.append("")
         else:
-            parts.append("── NO KNOWLEDGE BASE CONTEXT FOUND ──")
-            parts.append("Our knowledge base returned NO information for this question.")
-            parts.append("Do NOT answer from training knowledge.")
-            parts.append("Say: \"We don't have [specific detail] in our knowledge base.\"")
-            parts.append("Ask the user to provide the specific information.")
+            parts.append(prompts.ANSWER_PROMPT_NO_KB_SECTION)
+            parts.append(prompts.ANSWER_PROMPT_NO_KB_MESSAGE)
             parts.append("")
 
-        parts.append("──────────────────────────────────────")
-        parts.append(f"Investor Question: {question}")
-        parts.append("")
-        parts.append("Answer:")
+        parts.append(prompts.ANSWER_PROMPT_FOOTER.format(question=question))
 
         return "\n".join(parts)
 
@@ -393,11 +320,11 @@ TONE & COMPLIANCE RULES (from database)
         """Build user-turn prompt for draft mode."""
         parts = []
 
-        parts.append("── INVESTOR'S QUESTION (we are replying to this) ──")
+        parts.append(prompts.DRAFT_PROMPT_QUESTION_SECTION)
         parts.append(investor_question.strip())
         parts.append("")
 
-        parts.append("── INFORMATION PROVIDED BY OUR TEAM ──")
+        parts.append(prompts.DRAFT_PROMPT_INFO_SECTION)
         parts.append(user_info.strip() if user_info else "(none provided)")
         parts.append("")
 
@@ -407,14 +334,10 @@ TONE & COMPLIANCE RULES (from database)
             parts.append("")
 
         if doc_context and doc_context.strip():
-            parts.append("── KNOWLEDGE BASE (team facts first, then documents) ──")
+            parts.append(prompts.DRAFT_PROMPT_KB_SECTION)
             parts.append(doc_context.strip())
             parts.append("")
 
-        parts.append("──────────────────────────────────────")
-        parts.append("Draft the email reply using all information above.")
-        parts.append("Follow tone rules exactly. End with 'Best,'")
-        parts.append("")
-        parts.append("Draft Email:")
+        parts.append(prompts.DRAFT_PROMPT_FOOTER)
 
         return "\n".join(parts)

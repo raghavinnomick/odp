@@ -17,6 +17,9 @@ Chunk tuple layout (7 values — matches SearchService output):
 # Python Packages
 from typing import List, Tuple, Dict
 
+# Config
+from ..config import service_constants
+
 
 class ContextBuilder:
     """
@@ -83,7 +86,7 @@ class ContextBuilder:
             source = {
                 "document_name": doc_name,
                 "relevance":     f"{similarity:.2%}",
-                "preview":       chunk_text[:200] + "..." if len(chunk_text) > 200 else chunk_text
+                "preview":       chunk_text[:service_constants.SOURCE_PREVIEW_MAX_LENGTH] + "..." if len(chunk_text) > service_constants.SOURCE_PREVIEW_MAX_LENGTH else chunk_text
             }
             if page_number:
                 source["page_number"] = page_number
@@ -97,10 +100,10 @@ class ContextBuilder:
         """
         Derive a confidence tier from the average similarity of returned chunks.
 
-        Thresholds:
-          ≥ 0.85  → "high"
-          ≥ 0.70  → "medium"
-          < 0.70  → "low"
+        Thresholds (from service_constants):
+          ≥ HIGH_THRESHOLD  → "high"
+          ≥ MEDIUM_THRESHOLD → "medium"
+          < MEDIUM_THRESHOLD → "low"
 
         Args:
             chunks: List of chunk tuples (similarity at index 2).
@@ -113,8 +116,8 @@ class ContextBuilder:
 
         avg_similarity = sum(c[2] for c in chunks) / len(chunks)
 
-        if avg_similarity >= 0.85:
+        if avg_similarity >= service_constants.CONFIDENCE_HIGH_THRESHOLD:
             return "high"
-        if avg_similarity >= 0.70:
+        if avg_similarity >= service_constants.CONFIDENCE_MEDIUM_THRESHOLD:
             return "medium"
         return "low"

@@ -42,6 +42,7 @@ ERROR = {
     "INVALID_REQUEST":            "Request body is required",
     "MISSING_USER_ID":            "User ID is required",
     "INVALID_USER_ID":            "User ID must be a non-empty string",
+    "MISSING_SESSION_ID":        "session_id is required to generate a draft.",
 
     # General
     "UNSUPPORTED_FILE_FORMAT":    "Unsupported file format: {file_extension}. Supported formats: PDF",

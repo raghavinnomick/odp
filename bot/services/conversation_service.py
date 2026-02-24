@@ -26,8 +26,11 @@ from ...config.database import db
 from ...models.odp_conversation import Conversation
 from ...models.odp_conversation_message import ConversationMessage
 
-# Constants
-from ...base import constants
+# Config
+from ..config import bot_config
+
+
+
 
 
 class ConversationService:
@@ -37,7 +40,6 @@ class ConversationService:
     """
 
     # ── Session Management ─────────────────────────────────────────────────────
-
     def get_or_create_conversation(
         self,
         session_id: Optional[str] = None,
@@ -59,23 +61,26 @@ class ConversationService:
         Raises:
             Exception: Propagated if the DB commit fails (caller handles).
         """
+
         if session_id:
-            conversation = Conversation.query.filter_by(session_id=session_id).first()
+            conversation = Conversation.query.filter_by(session_id = session_id).first()
             if conversation:
+                print(f"🔄 Found existing conversation: {session_id}")
                 return conversation
 
         if not session_id:
             session_id = str(uuid.uuid4())
 
-        conversation = Conversation(session_id=session_id, user_id=user_id)
+        conversation = Conversation(session_id = session_id, user_id = user_id)
         db.session.add(conversation)
         db.session.commit()
 
         print(f"✅ New conversation created: {session_id}")
         return conversation
 
-    # ── Message Persistence ────────────────────────────────────────────────────
 
+
+    # ── Message Persistence ────────────────────────────────────────────────────
     def add_message(
         self,
         conversation_id: int,
@@ -114,12 +119,13 @@ class ConversationService:
             print(f"⚠️  add_message failed (conversation_id={conversation_id}): {exc}")
             return None
 
-    # ── History Retrieval ──────────────────────────────────────────────────────
 
+
+    # ── History Retrieval ──────────────────────────────────────────────────────
     def get_conversation_history(
         self,
         session_id: str,
-        limit: int = constants.BOT_LAST_CONVERSATION_MESSAGES_LIMIT
+        limit: int = bot_config.BOT_LAST_CONVERSATION_MESSAGES_LIMIT
     ) -> List[Dict]:
         """
         Return the *limit* most recent messages in chronological order.
@@ -133,14 +139,15 @@ class ConversationService:
             [{"role", "content", "deal_id", "metadata", "created_at"}, ...]
             Empty list if the session does not exist or on DB error.
         """
+
         try:
-            conversation = Conversation.query.filter_by(session_id=session_id).first()
+            conversation = Conversation.query.filter_by(session_id = session_id).first()
             if not conversation:
                 return []
 
             messages = (
                 ConversationMessage.query
-                .filter_by(conversation_id=conversation.conversation_id)
+                .filter_by(conversation_id = conversation.conversation_id)
                 .order_by(ConversationMessage.created_at.desc())
                 .limit(limit)
                 .all()
@@ -162,6 +169,8 @@ class ConversationService:
             db.session.rollback()
             print(f"⚠️  get_conversation_history failed (session={session_id}): {exc}")
             return []
+
+
 
     def get_last_assistant_message(self, session_id: str) -> Optional[Dict]:
         """
@@ -230,3 +239,43 @@ class ConversationService:
             db.session.rollback()
             print(f"⚠️  clear_conversation failed (session={session_id}): {exc}")
             return False
+
+
+    # ── Session Retrieval by User ──────────────────────────────────────────────
+
+    def get_sessions_by_user_id(self, user_id: str) -> List[Dict]:
+        """
+        Retrieve all conversations for a given user_id.
+
+        Args:
+            user_id: The user identifier.
+
+        Returns:
+            List of session dicts with session_id, conversation_id, created_at, updated_at.
+            Empty list if no sessions found or on error.
+        """
+
+        try:
+            conversations = (
+                Conversation.query
+                .filter_by(user_id = user_id)
+                .order_by(Conversation.updated_at.desc())
+                .all()
+            )
+
+            return [
+                {
+                    "conversation_id": conv.conversation_id,
+                    "session_id": conv.session_id,
+                    "user_id": conv.user_id,
+                    "created_at": conv.created_at.isoformat(),
+                    "updated_at": conv.updated_at.isoformat(),
+                    "context_data": conv.context_data
+                }
+                for conv in conversations
+            ]
+
+        except Exception as exc:
+            db.session.rollback()
+            print(f"⚠️  get_sessions_by_user_id failed (user_id={user_id}): {exc}")
+            return []

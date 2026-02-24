@@ -51,8 +51,12 @@ from ...models.odp_deal_dynamic_fact import DealDynamicFact
 # Vendors
 from ...vendors.openai import EmbeddingService
 
-# Constants
-from ...base import constants
+# Config
+from ..config import bot_config
+from ..config import prompts
+
+
+
 
 
 class DealContextService:
@@ -62,32 +66,40 @@ class DealContextService:
     """
 
     def __init__(self):
+        """ Initialize the DealContextService with an EmbeddingService instance. """
+
         self.embedding_service = EmbeddingService()
 
-    # ── Deal Discovery ─────────────────────────────────────────────────────────
 
+
+    # ── Deal Discovery ─────────────────────────────────────────────────────────
     def get_all_active_deals(self) -> List[Dict]:
         """Return all active deals as [{deal_id, deal_name, deal_code}, ...]."""
+
         try:
-            deals = Deal.query.filter_by(status=True).all()
+            deals = Deal.query.filter_by(status = True).all()
             return [
                 {"deal_id": d.deal_id, "deal_name": d.deal_name, "deal_code": d.deal_code}
                 for d in deals
             ]
+
         except Exception as exc:
             db.session.rollback()
             print(f"⚠️  get_all_active_deals failed: {exc}")
             return []
 
+
     def detect_deal_in_text(self, text: str, all_deals: List[Dict]) -> Optional[int]:
         """Return deal_id if any deal name/code appears in text (case-insensitive)."""
+
         text_lower = text.lower()
         for deal in all_deals:
             if (deal["deal_name"].lower() in text_lower or
                     deal["deal_code"].lower() in text_lower):
-                print(f"🔍 Deal detected: '{deal['deal_name']}' → deal_id={deal['deal_id']}")
+                print(f"🔍 Deal detected: '{deal['deal_name']}' → deal_id = {deal['deal_id']}")
                 return deal["deal_id"]
         return None
+
 
     def get_deal_name(self, deal_id: int) -> Optional[str]:
         """Return the deal_name for deal_id, or None."""
@@ -99,9 +111,11 @@ class DealContextService:
             print(f"⚠️  get_deal_name failed (deal_id={deal_id}): {exc}")
             return None
 
+
     def get_all_deal_names(self) -> List[str]:
         """Return names of all active deals."""
         return [d["deal_name"] for d in self.get_all_active_deals()]
+
 
     def build_deal_context(self, deal_id: int) -> str:
         """
@@ -118,8 +132,9 @@ class DealContextService:
             print(f"⚠️  build_deal_context failed (deal_id={deal_id}): {exc}")
             return ""
 
-    # ── Tone Rules ─────────────────────────────────────────────────────────────
 
+
+    # ── Tone Rules ─────────────────────────────────────────────────────────────
     def get_tone_rules(self, deal_id: Optional[int] = None) -> str:
         """
         Load tone and compliance rules from odp_tone_rules.
@@ -129,7 +144,7 @@ class DealContextService:
         try:
             global_rules = (
                 ToneRule.query
-                .filter_by(is_active=True, scope="global")
+                .filter_by(is_active = True, scope = "global")
                 .order_by(ToneRule.priority.desc())
                 .all()
             )
@@ -137,7 +152,7 @@ class DealContextService:
             if deal_id:
                 deal_rules = (
                     ToneRule.query
-                    .filter_by(is_active=True, scope="deal", deal_id=deal_id)
+                    .filter_by(is_active = True, scope = "deal", deal_id = deal_id)
                     .order_by(ToneRule.priority.desc())
                     .all()
                 )
@@ -145,11 +160,7 @@ class DealContextService:
             all_rules = global_rules + deal_rules
             if not all_rules:
                 print("⚠️  No tone rules in DB — using minimal fallback.")
-                return (
-                    "- Speak as 'we' (the firm). Be direct, warm, and confident.\n"
-                    "- Answer concisely. No corporate fluff.\n"
-                    "- Always use exact numbers and terms from the documents."
-                )
+                return prompts.DEFAULT_TONE_RULES
 
             return "\n".join(f"- [{r.rule_type.upper()}] {r.rule_text}" for r in all_rules)
 
@@ -158,14 +169,15 @@ class DealContextService:
             print(f"⚠️  get_tone_rules failed: {exc}")
             return "- Be direct, warm, and helpful."
 
-    # ── Dynamic KB — Tier-2 Search ─────────────────────────────────────────────
 
+
+    # ── Dynamic KB — Tier-2 Search ─────────────────────────────────────────────
     def search_dynamic_kb(
         self,
         question: str,
         deal_id: Optional[int] = None,
         top_k: int = 5,
-        similarity_threshold: float = constants.BOT_SIMILARITY_THRESHOLD
+        similarity_threshold: float = bot_config.BOT_SIMILARITY_THRESHOLD
     ) -> str:
         """
         Search odp_deal_dynamic_facts for entries that match *question*.
