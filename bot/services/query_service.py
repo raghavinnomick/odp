@@ -50,7 +50,7 @@ from ...util.exceptions import ServiceException
 from ...util import messages
 
 # Config
-from ..config import bot_config
+from ..config import bot_config, thresholds
 
 
 
@@ -279,7 +279,7 @@ class QueryService:
             # before document passages. Combined with system prompt instructions,
             # this ensures team-supplied values override document values.
             doc_context  = self.context_builder.build_context(chunks)
-            full_context = self._merge_context(dynamic_context, doc_context)
+            full_context = self.helper.merge_context(dynamic_context, doc_context)
 
             # ── Step 13: Deal context + tone rules ─────────────────────────────
             deal_context = (

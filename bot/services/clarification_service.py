@@ -1,29 +1,27 @@
 """
-Clarification Service
+Service: ClarificationService
+==============================
 Handles ambiguous or unclear questions.
 
 Core rule:
     Deal-specific questions (structure, fees, minimum, payment, etc.) REQUIRE
-    a known deal context before answering. Without it, ask which deal first.
+    a known deal_id before answering. Without it, ask "which deal?" first.
     This prevents hallucination — the LLM must never invent deal-specific numbers.
 """
 
 # Python Packages
-from typing import Optional, Dict, List
+from typing import List
 
 # Vendors
-from ...vendors.openai import ChatService
+from ...vendors import ChatService
 
 # Config
-from ..config import prompts, service_constants
-
-
-
+from ..config import prompts, llm_config, keywords
 
 
 class ClarificationService:
     """
-    Service for detecting when we must ask "which deal?" before answering.
+    Detects when we must ask "which deal?" before answering.
     All deal names come from the database — nothing is hardcoded.
     """
 
@@ -42,49 +40,30 @@ class ClarificationService:
         Determine if we need to ask "which deal?" before answering.
 
         Decision logic:
-            1. Deal context is known → never clarify (we know which deal, proceed)
+            1. Deal context is known → never clarify (proceed to answer)
             2. No deal context + general/greeting question → answer (no deal needed)
-            3. No deal context + deal-specific question → MUST clarify (ask which deal)
+            3. No deal context + deal-specific question → MUST clarify
             4. No deal context + truly vague → clarify
-
-        The key insight: deal-specific questions (fees, structure, minimum ticket,
-        payment dates, etc.) CANNOT be answered correctly without knowing which deal.
-        Attempting to answer them without deal context causes hallucination.
-
-        Args:
-            question: User's question
-            chunks_found: Number of relevant RAG chunks found
-            confidence: Confidence string from context builder
-            has_deal_context: True if an active deal_id is known
-
-        Returns:
-            True if we should ask for clarification before answering
         """
-
-        # Rule 1: Deal context is established — proceed to answer
-        # (chunks or DB facts will have the right deal-specific info)
+        # Rule 1: Deal context established — proceed
         if has_deal_context:
             return False
 
         question_lower = question.lower().strip()
 
-        # Rule 2: General / greeting questions don't need a deal — answer them
-        for pattern in service_constants.GENERAL_KEYWORDS:
+        # Rule 2: General questions don't need a deal
+        for pattern in keywords.GENERAL_KEYWORDS:
             if pattern in question_lower:
                 return False
 
-        # Rule 3: Deal-specific question WITHOUT a known deal → MUST clarify
-        # This is the key fix: we cannot answer "what is the minimum ticket?"
-        # or "tell me about the structure" without knowing which deal.
-        # Attempting to do so causes the LLM to hallucinate specific numbers.
-        for keyword in service_constants.DEAL_SPECIFIC_KEYWORDS:
-            if keyword in question_lower:
-                print(f"⚠️  Deal-specific question with no deal context — must clarify")
+        # Rule 3: Deal-specific question WITHOUT known deal → must clarify
+        for kw in keywords.DEAL_SPECIFIC_KEYWORDS:
+            if kw in question_lower:
+                print("⚠️  Deal-specific question with no deal context — must clarify")
                 return True
 
         # Rule 4: Vague question with no deal context → clarify
         return True
-
 
 
     def generate_clarifying_question(
@@ -96,47 +75,31 @@ class ClarificationService:
         """
         Generate a short, warm clarifying question.
         Deal names are passed in from the DB — nothing is hardcoded.
-
-        Args:
-            question: Original question from the user
-            available_documents: Document names in the system
-            available_deals: Deal names loaded from odp_deals table
-
-        Returns:
-            Clarifying question string
         """
-
-        if available_deals and len(available_deals) > 0:
+        if available_deals:
             deals_text = " or ".join(available_deals)
             deal_prompt = f"Are you asking about {deals_text}?"
         else:
             deal_prompt = "Could you let me know which deal you're asking about?"
 
-        # Fast path: if it's clearly a "which deal" situation, return directly
-        # without an LLM call (cheaper and more consistent)
+        # Fast path: deal-specific keyword → return directly without LLM call
         question_lower = question.lower()
-        for keyword in service_constants.DEAL_SPECIFIC_KEYWORDS:
-            if keyword in question_lower:
+        for kw in keywords.DEAL_SPECIFIC_KEYWORDS:
+            if kw in question_lower:
                 return f"Happy to help! {deal_prompt}"
 
-        # For genuinely vague questions, use LLM to generate a better response
-        if available_deals:
-            deals_text = " and ".join(available_deals)
-        else:
-            deals_text = "our current investment opportunities"
-
-        system_prompt = prompts.CLARIFICATION_SYSTEM_TEMPLATE.format(deals_text=deals_text)
-        user_prompt = prompts.CLARIFICATION_USER_PROMPT.format(question=question)
+        # Vague question → use LLM for a more natural response
+        deals_text    = " and ".join(available_deals) if available_deals else "our current investment opportunities"
+        system_prompt = prompts.CLARIFICATION_SYSTEM_PROMPT.format(deals_text=deals_text)
+        user_prompt   = prompts.CLARIFICATION_USER_PROMPT.format(question=question)
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user",   "content": user_prompt}
         ]
 
-        clarification = self.chat_service.generate_response(
-            messages=messages,
-            temperature=service_constants.LLM_CLARIFICATION_TEMPERATURE,
-            max_tokens=service_constants.LLM_CLARIFICATION_MAX_TOKENS
-        )
-
-        return clarification.strip()
+        return self.chat_service.generate_response(
+            messages    = messages,
+            temperature = llm_config.LLM_CLARIFICATION_TEMPERATURE,
+            max_tokens  = llm_config.LLM_CLARIFICATION_MAX_TOKENS
+        ).strip()

@@ -16,20 +16,26 @@ class Database:
     """
 
     def __init__(self):
+        """ Initialize database configuration from constants """
+
         self.host = constants.DB_HOST
         self.port = constants.DB_PORT
         self.user = constants.DB_USER
         self.password = constants.DB_PASSWORD
         self.database = constants.DB_NAME
 
+
+
     def get_database_uri(self):
         """
         Build PostgreSQL URI dynamically
         """
+
         return (
             f"postgresql://{self.user}:{self.password}"
             f"@{self.host}:{self.port}/{self.database}"
         )
+
 
 
 # Global SQLAlchemy object
@@ -40,6 +46,7 @@ def init_db(app):
     """
     Initialize database with Flask app
     """
+
     database = Database()
 
     app.config["SQLALCHEMY_DATABASE_URI"] = database.get_database_uri()

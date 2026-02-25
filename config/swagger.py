@@ -19,10 +19,13 @@ authorizations = {
     }
 }
 
+
 if constants.APP_ENV != "production":
     doc = '/swagger/'
+
 else:
     doc = False
+
 
 # Swagger Configuration
 api = Api(

@@ -4,6 +4,9 @@
 from decouple import config
 
 
+
+
+
 # App Constants
 APP_ENV                         =   config('APP_ENV')
 APP_SECRET_KEY                  =   config('APP_SECRET_KEY')
@@ -34,13 +37,21 @@ AWS_REGION				        =	config('AWS_REGION')
 AWS_S3_BUCKET_NAME	            =	config('AWS_S3_BUCKET_NAME')
 
 
+# AI Provider Variables
+AI_PROVIDER                     =   config('AI_PROVIDER', default = 'anthropic')
+
+
+# Anthropic Variables
+ANTHROPIC_API_KEY				=	config('ANTHROPIC_API_KEY')
+ANTHROPIC_DEFAULT_MODEL			=	"claude-sonnet-4-6"
+
+
 # OpenAI Constants
 OPENAI_API_KEY		            =	config('OPENAI_API_KEY')
 OPENAI_DEFAULT_MODEL            =   "gpt-4o-mini"
 OPENAI_MAX_TOKENS		        =	3000
 OPENAI_ANSWER_TEMPERATURE	    =	0.7 # Very Fliexible for creative answers
 OPENAI_EMBEDDING_MODEL          =	"text-embedding-3-small"
-
 OPENAI_RAG_MODEL	            =	config('OPENAI_RAG_MODEL')
 OPENAI_LIGHT_MODEL	            =	config('OPENAI_LIGHT_MODEL')
 

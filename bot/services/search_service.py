@@ -22,7 +22,7 @@ from sqlalchemy import text
 from ...config.database import db
 
 # Vendors
-from ...vendors.openai import EmbeddingService
+from ...vendors import EmbeddingService
 
 # Config
 from ..config import bot_config
