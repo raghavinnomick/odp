@@ -120,6 +120,15 @@ BUSINESS_KEYWORDS = {
 # it as a greeting (e.g. a 10-word message starting with "Hi" is probably real).
 GREETING_MAX_WORD_COUNT = 8
 
+# ── Fact Extractor — Pre-screen Greetings ─────────────────────────────────────
+# Messages that START with any of these AND are shorter than 30 characters
+# are skipped by FactExtractorService without calling the LLM.
+# Keeps the pre-screen fast and free of LLM cost for obvious non-facts.
+FACT_EXTRACTOR_SKIP_STARTERS = (
+    "hello", "hi ", "hey", "thanks", "thank you",
+    "ok", "okay", "great", "sounds good", "noted",
+)
+
 # ── Query Enhancement — Vague Words ───────────────────────────────────────────
 # If a question contains any of these, it likely needs context to be understood.
 # Triggers the query rewriter to resolve pronouns / vague references.

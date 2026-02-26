@@ -242,7 +242,7 @@ class DebugDeal(Resource):
             from .services.debug_service import DebugService
             debug   = DebugService()
             stats   = debug.get_deal_stats(deal_id)
-            samples = debug.get_sample_chunks(deal_id, limit=3)
+            samples = debug.get_sample_chunks(deal_id, limit = 3)
 
             question    = request.args.get("question")
             search_test = debug.test_search(deal_id, question) if question else None
@@ -310,3 +310,160 @@ class GetUserSessions(Resource):
         except Exception as error:
             error = InternalServerException(details = str(error))
             return error.to_dict(), error.status_code
+
+
+
+# ── POST /bot/thread ──────────────────────────────────────────────────────────
+@bot_namespace.route("/thread")
+class SubmitThread(Resource):
+    """
+    Submit a previous email thread before starting a bot conversation.
+
+    Thread is OPTIONAL. The bot works perfectly without it.
+    When provided, it gives the bot:
+      - The investor's name, email, tone, and communication style
+      - Which deal is being discussed (auto-detected from thread content)
+      - What has already been discussed (so the bot does not repeat it)
+      - What the investor's current open question is
+
+    Submitting a new thread for a session that already has one replaces the old one.
+    """
+
+    def post(self):
+        """
+        Parse and store an email thread for a session.
+
+        Request:
+        {
+            "session_id":      "abc-xyz",          // required — must already exist
+            "user_id":         "user-123",          // required
+            "raw_thread_text": "From: investor@...", // required — full thread text
+            "source":          "manual_paste"       // optional — default: 'manual_paste'
+        }
+
+        Response:
+        {
+            "status": "success",
+            "data": {
+                "id":                     1,
+                "session_id":             "abc-xyz",
+                "deal_id":                3,           // null if deal not detected
+                "source":                 "manual_paste",
+                "parse_status":           "completed", // or "failed"
+                "parsed_investor_name":   "John Smith",
+                "parsed_investor_email":  "john@example.com",
+                "parsed_latest_question": "What is the minimum ticket?",
+                "parsed_summary":         "The investor asked about...",
+                "parsed_context": {
+                    "investor_tone":      "formal",
+                    "deal_signals":       ["SpaceX"],
+                    "already_discussed":  ["valuation"],
+                    "open_items":         ["minimum ticket", "payment dates"],
+                    ...
+                },
+                "created_at": "2024-01-15T10:30:00"
+            }
+        }
+
+        Notes:
+          - If parse_status is "failed", the thread is still stored but the bot
+            will not have structured context — it falls back to no-thread mode.
+          - deal_id in the response tells you which deal was auto-detected.
+            If null, the bot will detect the deal from the conversation as normal.
+        """
+
+        try:
+            data = request.get_json()
+            BotValidation.validate_body(data)
+
+            session_id      = data.get("session_id", "").strip()
+            user_id         = data.get("user_id", "").strip()
+            raw_thread_text = data.get("raw_thread_text", "")
+            source          = data.get("source", "manual_paste").strip()
+
+            BotValidation.validate_session_id(session_id)
+            BotValidation.validate_user_id(user_id)
+            BotValidation.validate_thread_text(raw_thread_text)
+
+            result = BotController().submit_thread(
+                session_id      = session_id,
+                raw_thread_text = raw_thread_text,
+                user_id         = user_id,
+                source          = source
+            )
+
+            return {"status": "success", "data": result}, 200
+
+        except AppException as error:
+            return error.to_dict(), error.status_code
+
+        except ValueError as error:
+            # Raised by ThreadParserService._validate_thread_text()
+            return {
+                "status":     "error",
+                "error_code": "INVALID_THREAD",
+                "message":    str(error)
+            }, 400
+
+        except Exception as error:
+            error = InternalServerException(details=str(error))
+            return error.to_dict(), error.status_code
+
+
+
+# ── GET / DELETE /bot/thread/<session_id> ─────────────────────────────────────
+@bot_namespace.route("/thread/<session_id>")
+class ThreadBySession(Resource):
+    """Get or remove the active email thread for a session."""
+
+    def get(self, session_id):
+        """
+        Get the active email thread for a session.
+
+        Response when thread exists:
+        {
+            "status": "success",
+            "data": { ...thread dict... }
+        }
+
+        Response when no thread:
+        {
+            "status": "success",
+            "data": null
+        }
+        """
+
+        try:
+            result = BotController().get_thread(session_id = session_id)
+            return {"status": "success", "data": result}, 200
+
+        except Exception as error:
+            return {"status": "error", "message": str(error)}, 500
+
+
+    def delete(self, session_id):
+        """
+        Deactivate (soft-delete) the active thread for a session.
+
+        The thread row is kept in the DB (is_active = false) for audit purposes.
+        After deletion, the bot reverts to no-thread mode for this session.
+
+        Response:
+        {
+            "status": "success",
+            "data": {
+                "session_id": "abc-xyz",
+                "deactivated": true
+            }
+        }
+        """
+
+        try:
+            deactivated = BotController().delete_thread(session_id = session_id)
+            return {
+                "status": "success",
+                "data":   {"session_id": session_id, "deactivated": deactivated}
+            }, 200
+
+        except Exception as error:
+            return {"status": "error", "message": str(error)}, 500

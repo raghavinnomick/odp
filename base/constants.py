@@ -37,8 +37,16 @@ AWS_REGION				        =	config('AWS_REGION')
 AWS_S3_BUCKET_NAME	            =	config('AWS_S3_BUCKET_NAME')
 
 
+# Google Variables
+GOOGLE_PROJECT_ID		        =	config('GOOGLE_PROJECT_ID')
+GOOGLE_PROJECT_LOCATION	        =	config('GOOGLE_PROJECT_LOCATION')
+GOOGLE_PROJECT_PROCESSOR_ID     =	config('GOOGLE_PROJECT_PROCESSOR_ID')
+GOOGLE_APPLICATION_CREDENTIALS	=	config('GOOGLE_APPLICATION_CREDENTIALS')
+
+
 # AI Provider Variables
-AI_PROVIDER                     =   config('AI_PROVIDER', default = 'anthropic')
+# Set to 'anthropic' or 'openai' to control which LLM is used for all chat calls.
+AI_PROVIDER                     =   'anthropic'
 
 
 # Anthropic Variables
@@ -52,12 +60,5 @@ OPENAI_DEFAULT_MODEL            =   "gpt-4o-mini"
 OPENAI_MAX_TOKENS		        =	3000
 OPENAI_ANSWER_TEMPERATURE	    =	0.7 # Very Fliexible for creative answers
 OPENAI_EMBEDDING_MODEL          =	"text-embedding-3-small"
-OPENAI_RAG_MODEL	            =	config('OPENAI_RAG_MODEL')
-OPENAI_LIGHT_MODEL	            =	config('OPENAI_LIGHT_MODEL')
-
-
-# Google Variables
-GOOGLE_PROJECT_ID		        =	config('GOOGLE_PROJECT_ID')
-GOOGLE_PROJECT_LOCATION	        =	config('GOOGLE_PROJECT_LOCATION')
-GOOGLE_PROJECT_PROCESSOR_ID     =	config('GOOGLE_PROJECT_PROCESSOR_ID')
-GOOGLE_APPLICATION_CREDENTIALS	=	config('GOOGLE_APPLICATION_CREDENTIALS')
+OPENAI_RAG_MODEL	            =	"gpt-4o"
+OPENAI_LIGHT_MODEL	            =	"gpt-4o-mini"

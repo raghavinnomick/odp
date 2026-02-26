@@ -14,6 +14,7 @@ from ..bot.handler import bot_namespace
 # Adding the namespaces
 class URLs:
     """ All application namespaces will be declare here... """
+
     @staticmethod
     def add_namespaces():
         """ Function for adding namespaces... """

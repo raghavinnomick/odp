@@ -41,6 +41,7 @@ from .deal_context_service import DealContextService
 from .draft_service import DraftService
 from .question_analyzer_service import QuestionAnalyzerService
 from .query_helper_service import QueryHelper
+from .thread_parser_service import ThreadParserService
 
 # Database
 from ...config.database import db
@@ -83,6 +84,7 @@ class QueryService:
         self.draft_service             = DraftService()
         self.question_analyzer         = QuestionAnalyzerService()
         self.helper                    = QueryHelper()
+        self.thread_parser_service     = ThreadParserService()
 
 
 
@@ -133,8 +135,15 @@ class QueryService:
             # ── Step 3: Active deals ───────────────────────────────────────────
             all_deals = self.deal_context_service.get_all_active_deals()
 
-            # ── Step 4: Deal detection (URL → question text → history) ─────────
+            # ── Step 4: Deal detection (URL → thread → question text → history) ─
             active_deal_id = deal_id
+
+            # Check thread first — if team member pasted a thread, deal may already be identified from it (highest confidence source).
+            if active_deal_id is None and conversation.session_id:
+                active_deal_id = self.thread_parser_service.get_thread_deal_id(
+                    session_id = conversation.session_id
+                )
+
             if active_deal_id is None:
                 active_deal_id = self.deal_context_service.detect_deal_in_text(
                     text = question, all_deals = all_deals
@@ -144,6 +153,7 @@ class QueryService:
                 active_deal_id = self.helper.get_deal_from_history(history)
                 if active_deal_id:
                     print(f"🎯 Deal from history: deal_id={active_deal_id}")
+
 
             # ── Step 5: Persist user message ───────────────────────────────────
             self.conversation_service.add_message(
@@ -281,23 +291,31 @@ class QueryService:
             doc_context  = self.context_builder.build_context(chunks)
             full_context = self.helper.merge_context(dynamic_context, doc_context)
 
-            # ── Step 13: Deal context + tone rules ─────────────────────────────
+            # ── Step 13: Deal context + tone rules + thread context ────────────
             deal_context = (
                 self.deal_context_service.build_deal_context(active_deal_id)
                 if active_deal_id else ""
             )
             tone_rules = self.deal_context_service.get_tone_rules(deal_id = active_deal_id)
 
+            # Thread context — "" if no thread pasted (bot works normally without it)
+            thread_context = self.thread_parser_service.get_thread_context(
+                session_id=conversation.session_id
+            )
+            if thread_context:
+                print("📧 Thread context injected into answer prompt")
+
             # ── Step 14: LLM history messages ─────────────────────────────────
             history_messages = self.helper.build_history_messages(history, max_messages = 6)
 
             # ── Step 15: Generate answer ───────────────────────────────────────
             answer = self.answer_generator.generate_answer(
-                question = question,
-                context = full_context,
-                tone_rules = tone_rules,
-                deal_context = deal_context,
-                history_messages=history_messages
+                question         = question,
+                context          = full_context,
+                tone_rules       = tone_rules,
+                deal_context     = deal_context,
+                thread_context   = thread_context,
+                history_messages = history_messages
             )
 
             sources = self.context_builder.extract_sources(chunks)
@@ -308,10 +326,11 @@ class QueryService:
                     history=history, current_question=question
                 )
                 info_request = self.answer_generator.generate_info_request(
-                    original_question=original_investor_question,
-                    partial_answer=answer,
-                    tone_rules=tone_rules,
-                    history_messages=history_messages
+                    original_question = original_investor_question,
+                    partial_answer    = answer,
+                    tone_rules        = tone_rules,
+                    thread_context    = thread_context,
+                    history_messages  = history_messages
                 )
                 full_response = f"{answer}\n\n---\n{info_request}"
                 self.conversation_service.add_message(

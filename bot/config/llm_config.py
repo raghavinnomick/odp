@@ -50,3 +50,10 @@ LLM_QUERY_REWRITER_MAX_TOKENS  = 1500
 # Extracts structured JSON facts from team messages. Must be deterministic.
 LLM_FACT_EXTRACTOR_TEMPERATURE = 0.0
 LLM_FACT_EXTRACTOR_MAX_TOKENS  = 100
+
+# ── Thread Parser ───────────────────────────────────────────────────────────────
+# Parses raw email thread into structured JSON.
+# Temperature 0 = fully deterministic JSON extraction, no creativity needed.
+# Max tokens is generous — threads can be long and the JSON output is detailed.
+LLM_THREAD_PARSER_TEMPERATURE = 0.0
+LLM_THREAD_PARSER_MAX_TOKENS  = 800

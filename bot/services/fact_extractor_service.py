@@ -33,7 +33,7 @@ from ...models.odp_deal_dynamic_fact import DealDynamicFact
 from ...vendors import ChatService
 
 # Config
-from ..config import prompts, llm_config
+from ..config import prompts, llm_config, keywords
 
 
 class FactExtractorService:
@@ -99,11 +99,8 @@ class FactExtractorService:
         if text.rstrip().endswith("?"):
             return True
 
-        greeting_starts = (
-            "hello", "hi ", "hey", "thanks", "thank you",
-            "ok", "okay", "great", "sounds good", "noted"
-        )
-        if any(text.startswith(g) for g in greeting_starts) and len(text) < 30:
+        # FACT_EXTRACTOR_SKIP_STARTERS lives in config/keywords.py — edit it there.
+        if any(text.startswith(g) for g in keywords.FACT_EXTRACTOR_SKIP_STARTERS) and len(text) < 30:
             return True
 
         return False

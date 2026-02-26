@@ -25,7 +25,6 @@ class Database:
         self.database = constants.DB_NAME
 
 
-
     def get_database_uri(self):
         """
         Build PostgreSQL URI dynamically

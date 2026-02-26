@@ -9,10 +9,10 @@ from typing import Optional
 # Services
 from .services.query_service import QueryService
 from .services.conversation_service import ConversationService
+from .services.thread_parser_service import ThreadParserService
 
 # Config
 from .config import bot_config
-
 
 
 
@@ -22,8 +22,9 @@ class BotController:
     def __init__(self):
         """ Initialize services... """
 
-        self.query_service        = QueryService()
-        self.conversation_service = ConversationService()
+        self.query_service         = QueryService()
+        self.conversation_service  = ConversationService()
+        self.thread_parser_service = ThreadParserService()
 
 
 
@@ -39,11 +40,11 @@ class BotController:
         Ask a question to the bot and get an answer.
 
         Args:
-            question: The user's question as a string.
-            user_id: The identifier of the user asking the question.
-            deal_id: Optional deal ID to scope the question to a specific deal.
+            question:   The user's question as a string.
+            user_id:    The identifier of the user asking the question.
+            deal_id:    Optional deal ID to scope the question to a specific deal.
             session_id: Optional session ID to maintain conversation context.
-            top_k: Number of top results to retrieve (default from constants).
+            top_k:      Number of top results to retrieve (default from constants).
 
         Returns:
             Dict containing the bot's response with answer and metadata.
@@ -65,7 +66,7 @@ class BotController:
 
         Args:
             session_id: The unique session identifier for the conversation.
-            user_id: The identifier of the user owning the session.
+            user_id:    The identifier of the user owning the session.
 
         Returns:
             Dict containing the generated draft email and related metadata.
@@ -84,7 +85,7 @@ class BotController:
 
         Args:
             session_id: The unique session identifier.
-            limit: Maximum number of messages to retrieve (default: 10).
+            limit:      Maximum number of messages to retrieve (default: 10).
 
         Returns:
             Dict containing session_id, messages list, and total message count.
@@ -124,9 +125,68 @@ class BotController:
         """
 
         sessions = self.conversation_service.get_sessions_by_user_id(user_id)
-
         return {
-            "user_id": user_id,
+            "user_id":  user_id,
             "sessions": sessions,
-            "total": len(sessions)
+            "total":    len(sessions)
         }
+
+
+
+    # ── Thread Methods ─────────────────────────────────────────────────────────
+    def submit_thread(
+        self,
+        session_id: str,
+        raw_thread_text: str,
+        user_id: str,
+        source: str = "manual_paste"
+    ) -> dict:
+        """
+        Submit and parse an email thread for a session.
+
+        Stores the raw thread, parses it via LLM to extract investor context,
+        detects deal_id from thread content, and returns the full parsed record.
+        Thread is completely optional — bot works with no thread at all.
+
+        Args:
+            session_id:      The bot session this thread belongs to.
+            raw_thread_text: Full pasted email thread text.
+            user_id:         Team member submitting the thread.
+            source:          'manual_paste' (v1) | 'gmail_extension' (future).
+
+        Returns:
+            Serialised DealEmailThread dict with parse results.
+        """
+
+        thread = self.thread_parser_service.submit_thread(
+            session_id      = session_id,
+            raw_thread_text = raw_thread_text,
+            user_id         = user_id,
+            source          = source
+        )
+
+        return thread.to_dict()
+
+
+
+    def get_thread(self, session_id: str) -> Optional[dict]:
+        """
+        Retrieve the active thread for a session.
+
+        Returns:
+            Thread dict, or None if no active thread exists for this session.
+        """
+
+        return self.thread_parser_service.get_thread_for_session(session_id)
+
+
+
+    def delete_thread(self, session_id: str) -> bool:
+        """
+        Deactivate (soft-delete) the active thread for a session.
+
+        Returns:
+            True if a thread was found and deactivated, False otherwise.
+        """
+
+        return self.thread_parser_service.deactivate_thread(session_id)
