@@ -16,3 +16,4 @@ from . import llm_config
 from . import prompts
 from . import keywords
 from . import thresholds
+from . import fact_patterns

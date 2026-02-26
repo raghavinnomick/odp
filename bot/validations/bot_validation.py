@@ -60,3 +60,52 @@ class BotValidation:
                 error_code = "INVALID_USER_ID",
                 message = messages.ERROR["INVALID_USER_ID"]
             )
+
+
+    @staticmethod
+    def validate_thread_text(thread_text):
+        """
+        Validate raw email thread text before storing.
+        Length limits come from config/bot_config.py.
+        """
+        from ..config import bot_config
+
+        if not thread_text:
+            raise AppException(
+                error_code  = "MISSING_THREAD_TEXT",
+                message     = "thread_text is required.",
+                status_code = 400
+            )
+
+        if not isinstance(thread_text, str):
+            raise AppException(
+                error_code  = "INVALID_THREAD_TEXT",
+                message     = "thread_text must be a string.",
+                status_code = 400
+            )
+
+        stripped = thread_text.strip()
+
+        if len(stripped) < bot_config.BOT_THREAD_MIN_LENGTH:
+            raise AppException(
+                error_code  = "THREAD_TOO_SHORT",
+                message     = f"thread_text must be at least {bot_config.BOT_THREAD_MIN_LENGTH} characters.",
+                status_code = 400
+            )
+
+        if len(stripped) > bot_config.BOT_THREAD_MAX_LENGTH:
+            raise AppException(
+                error_code  = "THREAD_TOO_LONG",
+                message     = f"thread_text must not exceed {bot_config.BOT_THREAD_MAX_LENGTH} characters.",
+                status_code = 400
+            )
+
+
+    @staticmethod
+    def validate_session_id(session_id):
+        if not session_id or not isinstance(session_id, str) or not session_id.strip():
+            raise AppException(
+                error_code  = "MISSING_SESSION_ID",
+                message     = messages.ERROR.get("MISSING_SESSION_ID", "session_id is required."),
+                status_code = 400
+            )

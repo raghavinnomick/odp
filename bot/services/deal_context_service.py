@@ -54,6 +54,7 @@ from ...vendors.openai import EmbeddingService
 # Config
 from ..config import bot_config
 from ..config import prompts
+from ..config import fact_patterns
 
 
 
@@ -414,27 +415,9 @@ class DealContextService:
         import re as _re
         q = question.lower().strip()
 
-        KEY_MAPPINGS = [
-            (["price per share", "share price", "stock price", "per share",
-              "price of share", "current price", "cost per share"], "share_price"),
-            (["minimum ticket", "min ticket", "check size", "minimum check",
-              "minimum investment", "min check"], "minimum_ticket"),
-            (["payment date", "wire date", "payment deadline",
-              "payment schedule"], "payment_dates"),
-            (["management fee", "carry", "carried interest"], "fees_and_carry"),
-            (["lock-up", "lockup", "lock up", "holding period"], "lockup_period"),
-            (["closing date", "close date", "final close"], "closing_date"),
-            (["valuation", "company value", "pre-money", "post-money"], "valuation"),
-            (["irr", "internal rate of return"], "irr"),
-            (["allocation", "available allocation"], "allocation"),
-            (["distribution", "distribution schedule"], "distributions"),
-            (["return", "expected return", "target return"], "expected_return"),
-            (["fee", "fees"], "fees"),
-            (["structure", "investment structure"], "deal_structure"),
-        ]
-
-        for keywords, key in KEY_MAPPINGS:
-            if any(kw in q for kw in keywords):
+        # KEY_MAPPINGS lives in config/fact_patterns.py — edit it there.
+        for phrases, key in fact_patterns.KEY_MAPPINGS:
+            if any(kw in q for kw in phrases):
                 return key
 
         # Generic fallback: extract meaningful words
@@ -477,106 +460,22 @@ class DealContextService:
         a_lower   = user_answer.lower()
         facts     = []
 
-        # Each entry: (topic_keywords_in_question, answer_signal_keywords, question_template)
-        # topic_keywords:  must appear in investor_question for this topic to be relevant
-        # answer_signals:  phrases in user_answer that precede the actual value
-        # question_tmpl:   the focused standalone question to store
-        FACT_PATTERNS = [
-            (
-                ["minimum", "ticket", "check size", "min ticket", "minimum ticket",
-                 "minimum check", "min check", "minimum investment"],
-                ["minimum ticket", "min ticket", "minimum check", "min check",
-                 "minimum is", "minimum would be", "minimum:", "ticket is",
-                 "ticket would be", "ticket:", "check size is", "check size would be",
-                 "check size:", "minimum investment"],
-                f"What is the minimum ticket size for {deal_name}?"
-            ),
-            (
-                ["payment date", "payment dates", "wire date", "wire dates",
-                 "payment deadline", "when to pay", "payment schedule"],
-                ["payment date", "payment dates", "wire date", "wire by",
-                 "payment is", "payment would be", "payment:", "dates would be",
-                 "date would be", "dates are", "date is"],
-                f"What are the payment dates for {deal_name}?"
-            ),
-            (
-                ["structure", "investment structure", "deal structure",
-                 "how is it structured", "investing structure"],
-                ["structure is", "structure would be", "structured as",
-                 "structured through", "investment structure"],
-                f"What is the investment structure for {deal_name}?"
-            ),
-            (
-                ["fee", "fees", "management fee", "carry", "carried interest"],
-                ["fee is", "fees are", "management fee", "carry is",
-                 "carry would be", "carried interest"],
-                f"What are the fees and carry for {deal_name}?"
-            ),
-            (
-                ["lockup", "lock-up", "lock up", "lock period", "holding period"],
-                ["lockup is", "lock-up is", "lock up is", "lockup period",
-                 "holding period", "locked for", "locked up for"],
-                f"What is the lock-up period for {deal_name}?"
-            ),
-            (
-                ["closing date", "close date", "deadline", "final close",
-                 "closing deadline"],
-                ["closing date", "close date", "deadline is", "closes on",
-                 "closing on", "final close"],
-                f"What is the closing date for {deal_name}?"
-            ),
-            (
-                ["valuation", "pre-money", "post-money", "company valuation"],
-                ["valuation is", "valued at", "valuation:", "pre-money",
-                 "post-money"],
-                f"What is the valuation of {deal_name}?"
-            ),
-            # ── Share / stock price ──────────────────────────────────────────
-            (
-                ["price per share", "share price", "stock price", "per share",
-                 "price of share", "share cost", "price now", "current price",
-                 "cost per share"],
-                ["share price is", "share price:", "price per share is",
-                 "price per share:", "price is", "price would be", "priced at",
-                 "currently priced", "trading at", "cost is", "price now"],
-                f"What is the current share price for {deal_name}?"
-            ),
-            # ── Allocation / availability ────────────────────────────────────
-            (
-                ["allocation", "how much is available", "available allocation",
-                 "total allocation", "remaining allocation"],
-                ["allocation is", "allocation:", "available allocation",
-                 "total allocation", "we have", "remaining is"],
-                f"What is the available allocation for {deal_name}?"
-            ),
-            # ── Return / IRR / multiple ──────────────────────────────────────
-            (
-                ["return", "irr", "multiple", "expected return", "target return",
-                 "projected return"],
-                ["return is", "irr is", "expected return", "target return",
-                 "projected return", "multiple is", "multiple would be"],
-                f"What is the expected return or IRR for {deal_name}?"
-            ),
-            # ── Distribution schedule ────────────────────────────────────────
-            (
-                ["distribution", "distributions", "distribution schedule",
-                 "when are distributions", "distribution frequency"],
-                ["distribution is", "distributions are", "distributed",
-                 "distribution schedule", "distributions would be"],
-                f"What is the distribution schedule for {deal_name}?"
-            ),
-        ]
-
-        for topic_keywords, answer_signals, question_template in FACT_PATTERNS:
+        # FACT_PATTERNS lives in config/fact_patterns.py — edit it there.
+        # Each entry: (topic_keywords, answer_signals, question_template)
+        # question_template uses {deal_name} placeholder.
+        for topic_keywords, answer_signals, question_template in fact_patterns.FACT_PATTERNS:
             # Check that this topic was part of the original investor question
             topic_relevant = any(kw in q_lower for kw in topic_keywords)
             if not topic_relevant:
                 continue
 
+            # Resolve deal_name placeholder in template
+            resolved_question = question_template.format(deal_name=deal_name)
+
             # Find the value in the user's answer
             value = self._extract_value_after_signal(a_lower, user_answer, answer_signals)
             if value:
-                facts.append((question_template, value))
+                facts.append((resolved_question, value))
 
         return facts
 

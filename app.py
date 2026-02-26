@@ -12,10 +12,16 @@ from .config.swagger import api
 from .config.urls import URLs
 from .config.database import init_db, db
 
+
+
+
+
 def create_app():
     """
     Application Factory
     """
+
+    # App Object
     app = Flask(__name__)
     app.config["DEBUG"] = True
 
@@ -40,9 +46,10 @@ def create_app():
     return app
 
 
+
 # Create app instance for Flask CLI
 app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host = "0.0.0.0", port = 5000)

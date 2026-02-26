@@ -15,6 +15,7 @@ from .answer_generator import AnswerGenerator
 from .conversation_service import ConversationService
 from .deal_context_service import DealContextService
 from .query_helper_service import QueryHelper
+from .thread_parser_service import ThreadParserService
 
 # Database
 from ...config.database import db
@@ -40,6 +41,7 @@ class DraftService:
         self.conversation_service = ConversationService()
         self.deal_context_service = DealContextService()
         self.helper               = QueryHelper()
+        self.thread_parser_service = ThreadParserService()
 
     # ── Manual Draft Generation ────────────────────────────────────────────────
 
@@ -114,13 +116,21 @@ class DraftService:
             history_messages = self.helper.build_history_messages(history, max_messages=10)
             summary          = self.helper.build_conversation_summary(history)
 
+            # Thread context — enriches draft with investor's style when available
+            thread_context = self.thread_parser_service.get_thread_context(
+                session_id=conversation.session_id
+            )
+            if thread_context:
+                print("📧 Thread context injected into draft prompt")
+
             draft = self.answer_generator.generate_draft_email(
-                original_investor_question=investor_question,
-                user_supplied_info=summary,
-                tone_rules=tone_rules,
-                deal_context=deal_context,
-                doc_context=full_context,
-                history_messages=history_messages
+                original_investor_question = investor_question,
+                user_supplied_info         = summary,
+                tone_rules                 = tone_rules,
+                deal_context               = deal_context,
+                doc_context                = full_context,
+                thread_context             = thread_context,
+                history_messages           = history_messages
             )
 
             self.conversation_service.add_message(
@@ -218,12 +228,18 @@ class DraftService:
         history_messages = self.helper.build_history_messages(history, max_messages=10)
         summary          = self.helper.build_conversation_summary(history, user_answer)
 
+        # Thread context — enriches draft with investor's style when available
+        thread_context = self.thread_parser_service.get_thread_context(
+            session_id=conversation.session_id
+        )
+
         draft = self.answer_generator.generate_draft_email(
             original_investor_question = pending_question,
             user_supplied_info         = summary,
             tone_rules                 = tone_rules,
             deal_context               = deal_context,
             doc_context                = full_context,
+            thread_context             = thread_context,
             history_messages           = history_messages
         )
 

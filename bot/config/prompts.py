@@ -10,17 +10,30 @@ No prompts should be hardcoded inside service files.
 Sections
 --------
 1.  Query Rewriter           — resolves vague follow-up questions
-2.  Greeting Reply           — warm social responses
-3.  Answer Mode              — RAG Q&A (main answer flow)
-4.  Info Request Mode        — ask team ONLY for missing gaps
-5.  Draft Email Mode         — compose investor reply email
-6.  System Prompt Template   — base wrapper used by all answer modes
-7.  Clarification            — "which deal?" questions
-8.  Answer Prompt Sections   — labelled blocks injected into user turn
-9.  Draft Prompt Sections    — labelled blocks injected into draft user turn
-10. Info Request User Prompt — user-turn template for gap-asking
-11. Fact Extractor           — extract structured facts from team messages
-12. Default Tone Fallback    — used when no tone rules exist in the DB
+2.  Tone Consistency Block   — injected into EVERY prompt; enforces stable tone
+3.  Greeting Reply           — warm social responses
+4.  Answer Mode              — RAG Q&A (main answer flow)
+5.  Info Request Mode        — ask team ONLY for missing gaps
+6.  Draft Email Mode         — compose investor reply email
+7.  System Prompt Template   — base wrapper used by all answer modes
+8.  Clarification            — "which deal?" questions
+9.  Answer Prompt Sections   — labelled blocks injected into user turn
+10. Draft Prompt Sections    — labelled blocks injected into draft user turn
+11. Info Request User Prompt — user-turn template for gap-asking
+12. Fact Extractor           — extract structured facts from team messages
+13. Default Tone Fallback    — used when no tone rules exist in the DB
+
+TONE DESIGN PRINCIPLE
+----------------------
+Tone rules come from the database (odp_tone_rules). They are injected once
+into the system prompt and govern EVERY response for the session. The
+TONE_CONSISTENCY_BLOCK (Section 2) is the enforcement layer: it explicitly
+instructs the LLM to hold tone stable, avoid drift, and adapt gradually to
+match the communication style visible in the conversation history.
+
+Order matters: TONE rules are ALWAYS declared BEFORE task instructions so
+the LLM treats tone as a constraint that task instructions must work within,
+not the other way around.
 """
 
 
@@ -73,7 +86,49 @@ Rewritten Question:\
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. Greeting Reply
+# 2. Tone Consistency Block
+# ══════════════════════════════════════════════════════════════════════════════
+# Injected into EVERY system prompt immediately after the tone rules section.
+# This is the enforcement layer for all three tone requirements:
+#   (a) Consistent tone across responses
+#   (b) No random tone variation
+#   (c) Progressive adaptation based on historical communication style
+#
+# Why it comes BEFORE task instructions: tone is a hard constraint.
+# Task instructions (answer, ask, draft) must operate WITHIN the tone,
+# not override it. Placing tone first in the prompt anchors the LLM.
+
+TONE_CONSISTENCY_BLOCK = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TONE ENFORCEMENT — READ BEFORE ANYTHING ELSE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The tone rules above are NON-NEGOTIABLE. Apply them to EVERY sentence you write.
+
+(a) CONSISTENCY — Hold the same tone throughout this entire response.
+    Do NOT start formal and drift casual, or start warm and drift clinical.
+    Every sentence must feel like it was written by the same person.
+
+(b) NO RANDOM VARIATION — Do NOT change vocabulary, register, or level of
+    formality between paragraphs or between different parts of your answer.
+    If the tone rule says "direct and warm" — every sentence is direct and warm.
+
+(c) PROGRESSIVE ADAPTATION — Read the conversation history carefully before
+    writing. If past assistant messages use a particular phrasing style, sentence
+    length, or level of familiarity, MATCH that style. If you can see sent emails
+    or prior investor replies in the history, mirror their register exactly.
+    Each new response should feel like a natural continuation of what came before,
+    not a fresh start written by a different author.
+
+SELF-CHECK before sending:
+  ✓ Does every sentence match the tone rules above?
+  ✓ Does this response sound the same as my previous messages in this conversation?
+  ✓ If there are past emails in the history, does this match their style?
+  ✗ If any answer is NO — rewrite until all three are YES.
+"""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. Greeting Reply
 # ══════════════════════════════════════════════════════════════════════════════
 # Used by AnswerGenerator.generate_greeting_reply()
 # Produces a warm, 1–2 sentence social response with no deal content.
@@ -82,18 +137,21 @@ GREETING_SYSTEM_PROMPT = """\
 You are a helpful assistant for Open Doors Partners (ODP), a private investment firm.
 You assist the ODP team in answering investor questions.
 
-TONE RULES (from database):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TONE RULES (from database)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {tone_section}
-
-TASK: The user sent a greeting or social message.
+{tone_consistency_block}
+TASK:
+The user sent a greeting or social message.
 Reply in a warm, brief, natural way — 1 to 2 sentences maximum.
-Do NOT mention deals or investments unless the user brings it up.
-Just greet them and let them know you are ready to help.\
+Hold the same tone throughout. Do NOT mention deals or investments
+unless the user brings it up. Simply greet them and signal you are ready to help.\
 """
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. Answer Mode Instructions
+# 4. Answer Mode Instructions
 # ══════════════════════════════════════════════════════════════════════════════
 # Injected into the system prompt when mode="answer".
 # Tells the LLM how to prioritise context and what to do when info is missing.
@@ -133,7 +191,7 @@ ESCALATION — say "Let me flag this for our team to follow up":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. Info Request Mode Instructions (Ask for Gaps Only)
+# 5. Info Request Mode Instructions (Ask for Gaps Only)
 # ══════════════════════════════════════════════════════════════════════════════
 # Injected into the system prompt when mode="ask".
 # The LLM sees the partial answer it already gave and asks ONLY for what's missing.
@@ -176,7 +234,7 @@ End with: "Once you share these, I will draft the reply right away."\
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5. Draft Email Mode Instructions
+# 6. Draft Email Mode Instructions
 # ══════════════════════════════════════════════════════════════════════════════
 # Injected into the system prompt when mode="draft".
 
@@ -189,7 +247,9 @@ Use team-supplied information, deal context, and document passages.
 
 FORMAT:
 - Start directly with the reply body (no subject line)
-- Use tone rules faithfully
+- Apply the tone rules faithfully — every sentence, every paragraph
+- If the conversation history contains previous emails or replies,
+  match their sentence length, vocabulary, and level of formality exactly
 - Answer each part of the investor's question in order
 - If numbered sub-questions, answer each one numbered
 - End with "Best,"
@@ -204,11 +264,19 @@ ACCURACY:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 6. System Prompt Base Template
+# 7. System Prompt Base Template
 # ══════════════════════════════════════════════════════════════════════════════
 # Wrapper used by AnswerGenerator._build_system_prompt() for all three modes.
-# {tone_section}       → from odp_tone_rules DB table
-# {mode_instructions}  → one of ANSWER / ASK / DRAFT mode instructions above
+#
+# ORDER IS INTENTIONAL:
+#   1. Identity & role
+#   2. Tone rules (from DB)          ← declared FIRST as a hard constraint
+#   3. Tone consistency enforcement  ← reinforces and operationalises the rules
+#   4. Task instructions             ← must operate WITHIN the tone constraint
+#
+# {tone_section}            → from odp_tone_rules DB table
+# {tone_consistency_block}  → TONE_CONSISTENCY_BLOCK (always the same)
+# {mode_instructions}       → one of ANSWER / ASK / DRAFT mode instructions above
 
 SYSTEM_PROMPT_TEMPLATE = """\
 You are an AI assistant for Open Doors Partners (ODP), a private investment firm.
@@ -218,12 +286,13 @@ You help the ODP team respond accurately and professionally to investor question
 TONE & COMPLIANCE RULES (from database)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {tone_section}
+{tone_consistency_block}
 {mode_instructions}\
 """
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 7. Clarification Prompts
+# 8. Clarification Prompts
 # ══════════════════════════════════════════════════════════════════════════════
 # Used by ClarificationService when the bot needs to ask "which deal?"
 
@@ -241,7 +310,7 @@ Ask which deal or what they need.\
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 8. Answer Prompt Sections
+# 9. Answer Prompt Sections
 # ══════════════════════════════════════════════════════════════════════════════
 # Labelled section headers and fallback messages injected into the user turn
 # for the answer mode. These delimit different context blocks in the prompt.
@@ -264,7 +333,7 @@ Answer:\
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 9. Draft Prompt Sections
+# 10. Draft Prompt Sections
 # ══════════════════════════════════════════════════════════════════════════════
 # Labelled section headers injected into the user turn for draft mode.
 
@@ -275,14 +344,16 @@ DRAFT_SECTION_KB           = "── KNOWLEDGE BASE (team facts first, then docu
 DRAFT_FOOTER               = """\
 ──────────────────────────────────────
 Draft the email reply using all information above.
-Follow tone rules exactly. End with 'Best,'
+Follow the tone rules exactly — every sentence must match the tone.
+If prior emails are visible in the conversation history, match their style.
+End with 'Best,'
 
 Draft Email:\
 """
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 10. Fact Extractor System Prompt
+# 11. Fact Extractor System Prompt
 # ══════════════════════════════════════════════════════════════════════════════
 # Used by FactExtractorService._extract_via_llm()
 # Extracts a structured JSON fact from a team member's chat message.
@@ -323,13 +394,103 @@ If no fact:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 11. Default Tone Fallback
+# 12. Default Tone Fallback
 # ══════════════════════════════════════════════════════════════════════════════
 # Used when no tone rules are found in the odp_tone_rules DB table.
 # Keep this minimal — real tone should always come from the database.
+# This fallback should match the firm's baseline communication standard.
 
 DEFAULT_TONE_RULES = (
     "- Speak as 'we' (the firm). Be direct, warm, and confident.\n"
-    "- Answer concisely. No corporate fluff.\n"
-    "- Always use exact numbers and terms from the documents."
+    "- Use clear, concise sentences. No corporate jargon or filler phrases.\n"
+    "- Match the register of the investor: if they are formal, stay formal;\n"
+    "  if they are conversational, be approachable but still professional.\n"
+    "- Always use exact numbers and terms from the source documents.\n"
+    "- Never hedge with phrases like 'I believe' or 'I think' — state facts directly."
 )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 13. Thread Parser System Prompt
+# ══════════════════════════════════════════════════════════════════════════════
+# Used by ThreadParserService._parse_via_llm()
+# Extracts structured JSON from a raw pasted email thread.
+#
+# Output shape is fixed — ThreadParserService validates every field.
+# If the LLM cannot determine a field, it must return null (not omit it).
+
+THREAD_PARSER_SYSTEM_PROMPT = """\
+You are an email thread analyser for Open Doors Partners (ODP), a private investment firm.
+
+You will receive a raw email thread — a back-and-forth between an investor and an ODP team member.
+Your job is to extract structured information from it so an AI assistant can answer the investor's
+question with full context, without re-reading the raw thread.
+
+EXTRACT the following and return ONLY valid JSON — no markdown, no explanation:
+
+{
+  "investor_name":      string | null,   // First + last name of the investor
+  "investor_email":     string | null,   // Investor's email address
+  "investor_tone":      string | null,   // One of: "formal", "conversational", "impatient", "excited", "cautious"
+  "deal_signals":       string[],        // Deal name clues found in thread (e.g. ["SpaceX", "secondary round"])
+  "latest_question":    string | null,   // The investor's MOST RECENT unanswered question, verbatim or closely paraphrased
+  "already_discussed":  string[],        // Topics already covered in the thread (e.g. ["valuation", "structure"])
+  "open_items":         string[],        // Questions/topics investor raised that are NOT yet fully answered
+  "thread_summary":     string,          // 2–4 sentence plain-English summary of the entire thread
+  "email_count":        integer,         // Total number of emails in the thread
+  "participants":       string[]         // All email addresses visible in the thread
+}
+
+RULES:
+- Return null for any field you cannot determine — never guess.
+- deal_signals: include any company name, deal name, fund name, or deal type mentioned.
+- latest_question: extract the investor's LAST email's main question only.
+  If they asked multiple sub-questions, include all of them as one string.
+- already_discussed: only include topics that were ANSWERED in the thread.
+- open_items: topics raised but NOT yet answered by ODP.
+- thread_summary: write from ODP's perspective ("The investor asked about...").
+- investor_tone: base this on the investor's writing style, not ODP's.
+- IMPORTANT: Return ONLY the JSON object. No preamble, no explanation, no markdown fences.\
+"""
+
+THREAD_PARSER_USER_TEMPLATE = """\
+Email Thread:
+─────────────────────────────────────────────
+{raw_thread}
+─────────────────────────────────────────────
+
+Extract the structured information from the thread above.\
+"""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 14. Thread Context Block
+# ══════════════════════════════════════════════════════════════════════════════
+# Injected into the user-turn prompt when an email thread exists for the session.
+# Placed BEFORE the KB context so the LLM knows the investor's situation
+# before reading any documents.
+#
+# Used by both answer mode (QueryService) and draft mode (DraftService).
+
+THREAD_CONTEXT_BLOCK_TEMPLATE = """\
+── EMAIL THREAD CONTEXT ──
+The team member has provided the previous email thread with this investor.
+Use this context to understand: who the investor is, what has already been
+discussed, and what their current open question is. When drafting, match
+the investor's communication style and tone exactly.
+
+Investor Name:       {investor_name}
+Investor Email:      {investor_email}
+Investor Tone:       {investor_tone}
+Topics Discussed:    {already_discussed}
+Open Items:          {open_items}
+Latest Question:     {latest_question}
+
+Thread Summary:
+{thread_summary}
+──────────────────────────────────────\
+"""
+
+# Fallback used when parsed_context exists but some fields are missing.
+THREAD_CONTEXT_UNKNOWN = "Unknown"
+THREAD_CONTEXT_NONE    = "None identified"

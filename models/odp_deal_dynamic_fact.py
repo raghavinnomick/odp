@@ -24,6 +24,9 @@ from pgvector.sqlalchemy import Vector
 from ..config.database import db
 
 
+
+
+
 class DealDynamicFact(db.Model):
     """
     Dynamic facts and Q&A pairs supplied by ODP team members during chat.
@@ -35,12 +38,13 @@ class DealDynamicFact(db.Model):
     All approved records are immediately searchable by the bot.
     """
 
+    # Table Name
     __tablename__ = "odp_deal_dynamic_facts"
 
-    # ── Primary Key ────────────────────────────────────────────────────────────
+    # ── Primary Key
     id = db.Column(db.Integer, primary_key = True, autoincrement = True)
 
-    # ── Foreign Key ────────────────────────────────────────────────────────────
+    # ── Foreign Key
     deal_id = db.Column(
         db.Integer,
         db.ForeignKey("odp_deals.deal_id", ondelete = "CASCADE"),
@@ -49,7 +53,7 @@ class DealDynamicFact(db.Model):
         doc = "The deal this fact belongs to."
     )
 
-    # ── Q&A Fields (used by vector similarity search) ──────────────────────────
+    # ── Q&A Fields (used by vector similarity search)
     question = db.Column(
         db.Text,
         nullable = True,
@@ -62,7 +66,7 @@ class DealDynamicFact(db.Model):
         doc = "The answer provided by the ODP team member."
     )
 
-    # ── Fact Fields (used by FactExtractorService key-value lookups) ───────────
+    # ── Fact Fields (used by FactExtractorService key-value lookups)
     fact_key = db.Column(
         db.String(255),
         nullable = True,
@@ -76,7 +80,7 @@ class DealDynamicFact(db.Model):
         doc = "Raw value as stated by the team member, e.g. '~$378'."
     )
 
-    # ── Vector Embedding ───────────────────────────────────────────────────────
+    # ── Vector Embedding
     embedding = db.Column(
         Vector(1536),
         nullable = True,
@@ -84,7 +88,7 @@ class DealDynamicFact(db.Model):
             "Embedding is generated over 'question + answer' for richer matching."
     )
 
-    # ── Approval & Source ──────────────────────────────────────────────────────
+    # ── Approval & Source
     approval_status = db.Column(
         db.String(50),
         nullable = False,
@@ -93,7 +97,7 @@ class DealDynamicFact(db.Model):
     )
 
     created_at = db.Column(
-        db.DateTime(timezone=True),
+        db.DateTime(timezone = True),
         nullable = False,
         server_default = func.now()
     )
@@ -104,7 +108,7 @@ class DealDynamicFact(db.Model):
         return f"<DealDynamicFact deal_id={self.deal_id} '{identifier}'>"
 
 
-# ── Vector Index for fast cosine-similarity search ────────────────────────────
+# ── Vector Index for fast cosine-similarity search
 Index(
     "idx_deal_dynamic_facts_embedding",
     DealDynamicFact.embedding,

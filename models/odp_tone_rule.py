@@ -20,59 +20,63 @@ from sqlalchemy import func
 from ..config.database import db
 
 
-class ToneRule(db.Model):
-    """A tone or compliance rule injected into the LLM system prompt."""
 
+
+
+class ToneRule(db.Model):
+    """ A tone or compliance rule injected into the LLM system prompt... """
+
+    # Table Name
     __tablename__ = "odp_tone_rules"
 
-    rule_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    rule_id = db.Column(db.Integer, primary_key = True, autoincrement = True)
 
     scope = db.Column(
         db.String(20),
-        nullable=False,
-        doc="'global' or 'deal'."
+        nullable = False,
+        doc = "'global' or 'deal'."
     )
 
     deal_id = db.Column(
         db.Integer,
-        db.ForeignKey("odp_deals.deal_id", ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-        doc="Set when scope='deal'. Null for global rules."
+        db.ForeignKey("odp_deals.deal_id", ondelete = "CASCADE"),
+        nullable = True,
+        index = True,
+        doc = "Set when scope='deal'. Null for global rules."
     )
 
     rule_type = db.Column(
         db.String(50),
-        nullable=False,
-        doc="One of: tone | compliance | do-not-say | disclaimer"
+        nullable = False,
+        doc = "One of: tone | compliance | do-not-say | disclaimer"
     )
 
-    rule_text = db.Column(db.Text, nullable=False)
+    rule_text = db.Column(db.Text, nullable = False)
 
     priority = db.Column(
         db.Integer,
-        nullable=False,
-        default=1,
-        doc="Higher value = injected first into the prompt."
+        nullable = False,
+        default = 1,
+        doc = "Higher value = injected first into the prompt."
     )
 
     is_active = db.Column(
         db.Boolean,
-        nullable=False,
-        default=True
+        nullable = False,
+        default = True
     )
 
     created_at = db.Column(
-        db.DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now()
+        db.DateTime(timezone = True),
+        nullable = False,
+        server_default = func.now()
     )
 
     updated_at = db.Column(
-        db.DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now()
+        db.DateTime(timezone = True),
+        nullable = False,
+        server_default = func.now(),
+        onupdate = func.now()
     )
 
     def __repr__(self):

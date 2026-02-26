@@ -21,6 +21,17 @@ This is enforced in two ways:
   1. Dynamic KB context is placed BEFORE static KB context in the prompt.
   2. The system prompt contains explicit override instructions (ANSWER_MODE_INSTRUCTIONS).
 
+Tone enforcement
+----------------
+TONE_CONSISTENCY_BLOCK is injected into EVERY system prompt (all modes).
+It enforces three rules:
+  (a) Consistent tone across all sentences in a response.
+  (b) No random tone variation between paragraphs.
+  (c) Progressive adaptation to match historical email/conversation style.
+
+The tone block is placed AFTER the tone rules and BEFORE task instructions
+so the LLM treats tone as a hard constraint that task logic works within.
+
 All tone comes from odp_tone_rules via the tone_rules parameter.
 Zero hardcoded tone or figures in this file — everything is in config/.
 """
@@ -54,7 +65,8 @@ class AnswerGenerator:
         print("👋 Generating greeting reply...")
 
         system_prompt = prompts.GREETING_SYSTEM_PROMPT.format(
-            tone_section=self._resolve_tone(tone_rules)
+            tone_section           = self._resolve_tone(tone_rules),
+            tone_consistency_block = prompts.TONE_CONSISTENCY_BLOCK
         )
 
         messages = [
@@ -76,6 +88,7 @@ class AnswerGenerator:
         context: str,
         tone_rules: str = None,
         deal_context: str = None,
+        thread_context: str = None,
         history_messages: Optional[List[Dict]] = None
     ) -> str:
         """
@@ -83,6 +96,8 @@ class AnswerGenerator:
 
         Context is pre-merged with Dynamic KB FIRST, Static KB second.
         System prompt reinforces that team-supplied facts override documents.
+        Thread context (if provided) is injected before KB so the LLM knows
+        the investor's situation before reading documents.
         NEVER invents figures not present in context.
         """
         print("🤖 Generating answer...")
@@ -99,7 +114,7 @@ class AnswerGenerator:
 
         messages.append({
             "role":    "user",
-            "content": self._format_answer_prompt(question, context, deal_context)
+            "content": self._format_answer_prompt(question, context, deal_context, thread_context)
         })
 
         return self.chat_service.generate_response(
@@ -115,6 +130,7 @@ class AnswerGenerator:
         original_question: str,
         partial_answer: str,
         tone_rules: str = None,
+        thread_context: str = None,
         history_messages: Optional[List[Dict]] = None
     ) -> str:
         """
@@ -122,6 +138,7 @@ class AnswerGenerator:
 
         Receives partial_answer so the LLM sees what was already confirmed
         and does NOT re-ask for those items.
+        Thread context is included so the LLM can reference the investor by name.
         """
         print("📋 Generating info request (gaps only)...")
 
@@ -134,7 +151,12 @@ class AnswerGenerator:
                 if role in ("user", "assistant") and content:
                     messages.append({"role": role, "content": content})
 
-        user_prompt = prompts.INFO_REQUEST_USER_PROMPT.format(
+        # Build user prompt — prepend thread context if available
+        user_prompt = ""
+        if thread_context and thread_context.strip():
+            user_prompt += thread_context.strip() + "\n\n"
+
+        user_prompt += prompts.INFO_REQUEST_USER_PROMPT.format(
             original_question = original_question,
             partial_answer    = partial_answer
         )
@@ -155,11 +177,13 @@ class AnswerGenerator:
         tone_rules: str = None,
         deal_context: str = None,
         doc_context: str = None,
+        thread_context: str = None,
         history_messages: Optional[List[Dict]] = None
     ) -> str:
         """
         Draft a reply email to an investor.
         Uses team-supplied info, dynamic KB (team corrections), and static KB.
+        Thread context (when available) lets the LLM match the investor's style.
         Tone from DB. No hardcoded figures.
         """
         print("✉️  Generating draft email...")
@@ -176,7 +200,8 @@ class AnswerGenerator:
         messages.append({
             "role":    "user",
             "content": self._format_draft_prompt(
-                original_investor_question, user_supplied_info, deal_context, doc_context
+                original_investor_question, user_supplied_info,
+                deal_context, doc_context, thread_context
             )
         })
 
@@ -196,7 +221,12 @@ class AnswerGenerator:
         return prompts.DEFAULT_TONE_RULES
 
     def _build_system_prompt(self, tone_rules: str = None, mode: str = "answer") -> str:
-        """Assemble system prompt for the given mode. Tone always from DB."""
+        """
+        Assemble system prompt for the given mode.
+
+        Order: role → tone rules → tone consistency block → task instructions.
+        Tone is always declared before task so it acts as a hard constraint.
+        """
         mode_map = {
             "ask":   prompts.ASK_MODE_INSTRUCTIONS,
             "draft": prompts.DRAFT_MODE_INSTRUCTIONS,
@@ -204,8 +234,9 @@ class AnswerGenerator:
         mode_instructions = mode_map.get(mode, prompts.ANSWER_MODE_INSTRUCTIONS)
 
         return prompts.SYSTEM_PROMPT_TEMPLATE.format(
-            tone_section      = self._resolve_tone(tone_rules),
-            mode_instructions = mode_instructions
+            tone_section           = self._resolve_tone(tone_rules),
+            tone_consistency_block = prompts.TONE_CONSISTENCY_BLOCK,
+            mode_instructions      = mode_instructions
         )
 
 
@@ -214,13 +245,23 @@ class AnswerGenerator:
         self,
         question: str,
         doc_context: str,
-        deal_context: str = None
+        deal_context: str = None,
+        thread_context: str = None
     ) -> str:
         """
         Build user-turn prompt for answer mode.
-        Context order: deal_context → doc_context (dynamic KB first, static second).
+
+        Order:
+          1. Thread context (investor background — highest priority for personalisation)
+          2. Deal context (active deal identifier)
+          3. KB context (dynamic facts first, static KB second)
+          4. Question footer
         """
         parts = []
+
+        # Thread context FIRST — investor context before any KB content
+        if thread_context and thread_context.strip():
+            parts += [thread_context.strip(), ""]
 
         if deal_context and deal_context.strip():
             parts += [prompts.ANSWER_SECTION_DEAL, deal_context.strip(), ""]
@@ -238,10 +279,27 @@ class AnswerGenerator:
         investor_question: str,
         user_info: str,
         deal_context: str = None,
-        doc_context: str = None
+        doc_context: str = None,
+        thread_context: str = None
     ) -> str:
-        """Build user-turn prompt for draft mode."""
-        parts = [
+        """
+        Build user-turn prompt for draft mode.
+
+        Order:
+          1. Thread context (investor style — so the draft mirrors their tone)
+          2. Investor's question
+          3. Team-supplied info
+          4. Deal context
+          5. KB context
+          6. Draft instruction footer
+        """
+        parts = []
+
+        # Thread context FIRST — style reference before any content
+        if thread_context and thread_context.strip():
+            parts += [thread_context.strip(), ""]
+
+        parts += [
             prompts.DRAFT_SECTION_QUESTION,
             investor_question.strip(),
             "",

@@ -13,40 +13,44 @@ from sqlalchemy import func
 from ..config.database import db
 
 
-class DealDocument(db.Model):
-    """A source document belonging to a deal."""
 
+
+
+class DealDocument(db.Model):
+    """ A source document belonging to a deal... """
+
+    # Table Name
     __tablename__ = "odp_deal_documents"
 
-    doc_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    doc_id = db.Column(db.Integer, primary_key = True, autoincrement = True)
 
     deal_id = db.Column(
         db.Integer,
-        db.ForeignKey("odp_deals.deal_id", ondelete="CASCADE"),
-        nullable=False,
-        index=True
+        db.ForeignKey("odp_deals.deal_id", ondelete = "CASCADE"),
+        nullable = False,
+        index = True
     )
 
-    doc_name = db.Column(db.String(255), nullable=False)
+    doc_name = db.Column(db.String(255), nullable = False)
 
     doc_type = db.Column(
         db.String(50),
-        nullable=False,
-        doc="One of: deck / faq / email / term_sheet"
+        nullable = False,
+        doc = "One of: deck / faq / email / term_sheet"
     )
 
     storage_path = db.Column(
         db.String(500),
-        nullable=False,
-        doc="S3 key or Drive path where the raw file is stored."
+        nullable = False,
+        doc = "S3 key or Drive path where the raw file is stored."
     )
 
-    version = db.Column(db.String(50), nullable=True)
+    version = db.Column(db.String(50), nullable = True)
 
     uploaded_at = db.Column(
-        db.DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now()
+        db.DateTime(timezone = True),
+        nullable = False,
+        server_default = func.now()
     )
 
     def __repr__(self):

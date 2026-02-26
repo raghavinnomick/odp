@@ -18,3 +18,12 @@ BOT_SIMILARITY_THRESHOLD = 0.5
 
 # Max messages returned by GET /bot/conversation/<session_id>
 BOT_LAST_CONVERSATION_MESSAGES_LIMIT = 10
+
+# ── Email Thread Settings ───────────────────────────────────────────────────────
+# Maximum raw thread text length accepted (characters).
+# Prevents extremely large pastes that would blow the LLM context window.
+BOT_THREAD_MAX_LENGTH = 50_000
+
+# Minimum raw thread text length (characters).
+# Rejects obviously empty or trivial submissions.
+BOT_THREAD_MIN_LENGTH = 20
